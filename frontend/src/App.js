@@ -1,0 +1,25 @@
+import React from 'react';
+import BotControl from './components/BotControl';
+import TradingViewWidget from 'react-tradingview-widget';
+import TradeLogs from './components/TradeLogs';
+
+function App() {
+  return (
+    <div style={{textAlign: 'center'}}>
+      <h1>🚀 Binance Futures Trading Bot 🚀</h1>
+
+      {/* 바이낸스 실시간 그래프 */}
+      <div style={{width: '80%', height: '420px', margin: '30px auto'}}>
+        <TradingViewWidget symbol="BINANCE:BTCUSDT" interval="1" timezone="Asia/Seoul"/>
+      </div>
+
+      {/* 봇 제어 버튼 */}
+      <BotControl />
+
+      {/* 거래로그 */}
+      <TradeLogs/>
+    </div>
+  );
+}
+
+export default App;

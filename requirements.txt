@@ -1,0 +1,7 @@
+python-binance
+fastapi
+uvicorn[standard]
+python-dotenv
+pandas
+ta
+numpy
