@@ -8,11 +8,15 @@ app = FastAPI()
 # ⭐️ CORS 설정 (필수 추가✨)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"], # 프론트엔드 URL
+    allow_origins=[
+        "https://akira-frontend.onrender.com",  # 실제 프론트 주소로 변경!
+        "http://localhost:3000"  # 개발용도 남겨두기 (선택)
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 bot = BinanceBot()
 

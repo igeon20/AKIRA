@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
 // ⚠️ 로컬 개발 환경에서 사용하는 API 주소
-const API_BASE_URL = "http://localhost:8000";
+const API_BASE_URL = process.env.REACT_APP_API_URL;
 
 function BotControl() {
   const [status, setStatus] = useState(false);
