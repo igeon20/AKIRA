@@ -1,6 +1,6 @@
 import React from 'react';
 import BotControl from './components/BotControl';
-import TradingViewWidget from 'react-tradingview-widget';
+import TradingViewWidget from 'react-tradingview-embed';
 import TradeLogs from './components/TradeLogs';
 
 function App() {
@@ -10,7 +10,15 @@ function App() {
 
       {/* 바이낸스 실시간 그래프 */}
       <div style={{width: '80%', height: '420px', margin: '30px auto'}}>
-        <TradingViewWidget symbol="BINANCE:BTCUSDT" interval="1" timezone="Asia/Seoul"/>
+        <AdvancedChart 
+          widgetProps={{
+            symbol: "BINANCE:BTCUSDT",
+            interval: "1",
+            timezone: "Asia/Seoul",
+            theme: "dark",
+            autosize: true
+          }} 
+        />
       </div>
 
       {/* 봇 제어 버튼 */}
