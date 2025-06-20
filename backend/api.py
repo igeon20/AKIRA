@@ -26,14 +26,14 @@ bot = BinanceBot()
 @app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
 def read_root(request: Request):
     if request.method == "HEAD":
-        return JSONResponse(status_code=200)
+        return JSONResponse(content=None, status_code=200)  # ✅ 여기 수정됨
     return {"message": "Binance Trading Bot API"}
 
 # ✅ /ping 엔드포인트 추가 (선택적으로 모니터링 용도로 사용 가능)
 @app.api_route("/ping", methods=["GET", "HEAD"])
 def ping(request: Request):
-    if request.method == "HEAD":
-        return JSONResponse(status_code=200)
+        if request.method == "HEAD":
+        return Response(status_code=204)
     return {"status": "ok"}
 
 @app.post("/bot/start")
