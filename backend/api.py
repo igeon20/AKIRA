@@ -33,7 +33,7 @@ def read_root(request: Request):
 @app.api_route("/ping", methods=["GET", "HEAD"])
 def ping(request: Request):
         if request.method == "HEAD":
-        return Response(status_code=204)
+            return Response(status_code=204)
     return {"status": "ok"}
 
 @app.post("/bot/start")
