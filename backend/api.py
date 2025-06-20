@@ -1,5 +1,6 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from bot import BinanceBot
 from threading import Thread
 import uvicorn
@@ -21,9 +22,19 @@ app.add_middleware(
 
 bot = BinanceBot()
 
-@app.get("/")
-def read_root():
+# ✅ UptimeRobot을 위한 루트 엔드포인트 (HEAD 지원 포함)
+@app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
+def read_root(request: Request):
+    if request.method == "HEAD":
+        return JSONResponse(status_code=200)
     return {"message": "Binance Trading Bot API"}
+
+# ✅ /ping 엔드포인트 추가 (선택적으로 모니터링 용도로 사용 가능)
+@app.api_route("/ping", methods=["GET", "HEAD"])
+def ping(request: Request):
+    if request.method == "HEAD":
+        return JSONResponse(status_code=200)
+    return {"status": "ok"}
 
 @app.post("/bot/start")
 def start_bot():
@@ -46,7 +57,7 @@ def bot_status():
         "balance": bot.balance,
         "position": bot.position,               # 현재 포지션 (1:롱, -1:숏, 0:없음)
         "entry_price": bot.entry_price,         # 진입가격
-        "leverage": bot.leverage               # 레버리지
+        "leverage": bot.leverage                # 레버리지
     }
 
 @app.get("/bot/logs")
