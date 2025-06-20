@@ -1,23 +1,23 @@
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware  # <--- 이 부분 추가✨
+from fastapi.middleware.cors import CORSMiddleware
 from bot import BinanceBot
+from threading import Thread
 import uvicorn
 
 app = FastAPI()
 
-# ⭐️ CORS 설정 (필수 추가✨)
+# ⭐️ CORS 설정 (서버-프론트 주소에 맞게 수정)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://akiraa.netlify.app",  # 예비용
-        "https://eveleen.netlify.app", # 실제 프론트 주소로 변경!
-        "http://localhost:3000"  # 개발용도 남겨두기 (선택)
+        "https://akiraa.netlify.app",      # 예비: 이전 프론트
+        "https://eveleen.netlify.app",     # 실제 프론트
+        "http://localhost:3000",           # 로컬 개발용
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
 bot = BinanceBot()
 
@@ -28,7 +28,6 @@ def read_root():
 @app.post("/bot/start")
 def start_bot():
     if not bot.running:
-        from threading import Thread
         Thread(target=bot.start).start()
         return {"message": "🚀 봇 시작됨"}
     return {"message": "⚠️ 봇 이미 실행중"}
@@ -42,7 +41,13 @@ def stop_bot():
 
 @app.get("/bot/status")
 def bot_status():
-    return {"running": bot.running, "balance": bot.balance}
+    return {
+        "running": bot.running,
+        "balance": bot.balance,
+        "position": bot.position,               # 현재 포지션 (1:롱, -1:숏, 0:없음)
+        "entry_price": bot.entry_price,         # 진입가격
+        "leverage": bot.leverage               # 레버리지
+    }
 
 @app.get("/bot/logs")
 def get_logs():
