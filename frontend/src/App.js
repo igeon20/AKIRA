@@ -1,6 +1,6 @@
 import React from 'react';
 import BotControl from './components/BotControl';
-import TradingViewWidget from 'react-tradingview-embed';
+import { AdvancedChart } from 'react-tradingview-embed';
 import TradeLogs from './components/TradeLogs';
 
 function App() {
@@ -17,6 +17,8 @@ function App() {
             timezone: "Asia/Seoul",
             theme: "dark",
             autosize: true
+            // width: "100%",
+            // height: 420,
           }} 
         />
       </div>
