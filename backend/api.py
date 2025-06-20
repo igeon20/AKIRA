@@ -9,7 +9,7 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://akira-frontend.onrender.com",  # 실제 프론트 주소로 변경!
+        "https://akiraa.netlify.app/",  # 실제 프론트 주소로 변경!
         "http://localhost:3000"  # 개발용도 남겨두기 (선택)
     ],
     allow_credentials=True,
