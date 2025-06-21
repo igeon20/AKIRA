@@ -184,4 +184,13 @@ class BinanceBot:
                 type="MARKET",
                 quantity=qty
             )
-           
+            profit = self.balance * (pnl * self.leverage)
+            self.balance += profit
+            self.trade_logs.append(f"[청산] {'LONG' if self.position==1 else 'SHORT'} CLOSE @ {price}")
+            self.trade_logs.append(f"[손익] {pnl*100:.2f}% ({self.leverage}배), {profit:.2f} → 잔고:{self.balance:.2f} USDT")
+        except Exception as e:
+            self.trade_logs.append(f"[청산실패] @ {price}: {e}")
+        # 포지션 및 잔상태 초기화
+        self.position = 0
+        self.entry_price = None
+        self.last_qty = 0
