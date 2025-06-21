@@ -162,3 +162,50 @@ class BinanceBot:
 
             if self.balance <= 0:
                 self.running = False
+                self.trade_logs.append("[종료] 💀 잔고 소진 - 봇 자동 종료")
+                break
+
+            time.sleep(60)
+
+        self.trade_logs.append("[종료] 봇 정지 끝")
+
+    def stop(self):
+        self.running = False
+        self.trade_logs.append("[수동정지] 사용자 요청 봇 중지")
+
+    def _enter_position(self, side, price, qty):
+        try:
+            order = self.client.futures_create_order(
+                symbol=self.symbol,
+                side="BUY" if side == "LONG" else "SELL",
+                type="MARKET",
+                quantity=qty
+            )
+            self.entry_price = price
+            self.position = 1 if side == "LONG" else -1
+            self.last_qty = qty
+            self.trade_logs.append(f"[진입] {side} @ {price} / 수량: {qty:.4f}")
+            self.trade_logs.append(f"잔고: {self.balance:.2f} USDT")
+        except Exception as e:
+            self.trade_logs.append(f"[진입실패] {side} @ {price}: {e}")
+
+    def _close_position(self, price, pnl, qty):
+        side = "SELL" if self.position == 1 else "BUY"
+        try:
+            order = self.client.futures_create_order(
+                symbol=self.symbol,
+                side=side,
+                type="MARKET",
+                quantity=qty
+            )
+            profit = self.balance * (pnl * self.leverage)
+            self.balance += profit
+            self.trade_logs.append(f"[청산] {'LONG' if self.position == 1 else 'SHORT'} CLOSE @ {price}")
+            self.trade_logs.append(f"[손익] {pnl*100:.2f}% ({self.leverage}배), {profit:.2f} → 잔고:{self.balance:.2f} USDT")
+        except Exception as e:
+            self.trade_logs.append(f"[청산실패] @ {price}: {e}")
+
+        # 포지션 상태 초기화
+        self.position = 0
+        self.entry_price = None
+        self.last_qty = 0
