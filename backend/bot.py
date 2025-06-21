@@ -54,7 +54,6 @@ class BinanceBot:
     def _calc_qty(self, price):
         usdt = max(self.balance * 0.1, 2.0)
         raw_qty = usdt / price
-        # BTCUSDT는 최소 0.001 BTC, 소수점 3자리
         qty = max(round(raw_qty, self.qty_precision), self.min_qty)
         return qty
 
@@ -86,13 +85,12 @@ class BinanceBot:
 
             current_price = float(df['Close'].iloc[-1])
             willr = float(df['Willr'].iloc[-1])
-            rsi = float(df['RSI'].iloc[-1])
-            vol = float(df['Volume'].iloc[-1])
-            vol_ma = float(df['Vol_MA5'].iloc[-1])
+            rsi   = float(df['RSI'].iloc[-1])
+            vol   = float(df['Volume'].iloc[-1])
+            vol_ma= float(df['Vol_MA5'].iloc[-1])
             now_signal = self.check_entry_signal(df)
             now = time.time()
-            
-            # 1. 진입 가능? 모든 사유 로그 및 오류대응
+
             if self.position == 0:
                 cond1 = now_signal != 0
                 cond2 = now_signal != self.last_signal
@@ -123,8 +121,17 @@ class BinanceBot:
                     msg = "[대기] 진입불가: " + ", ".join(entry_reasons)
                     if len(self.trade_logs)==0 or self.trade_logs[-1] != msg:
                         self.trade_logs.append(msg)
+            else:
+                # 포지션 있을 때도 항상 대기로그
+                position_name = "LONG" if self.position == 1 else "SHORT"
+                status_msg = (
+                    f"[대기] {position_name} 포지션 유지중 - 진입불가, "
+                    f"entry {self.entry_price:.2f} 현재가 {current_price:.2f} TP:{self.TAKE_PROFIT*100:.2f}% SL:{self.STOP_LOSS*100:.2f}%"
+                )
+                if len(self.trade_logs)==0 or self.trade_logs[-1] != status_msg:
+                    self.trade_logs.append(status_msg)
 
-            # 2. 포지션롱 유지
+            # 롱 청산 조건
             if self.position == 1:
                 pnl = (current_price - self.entry_price) / self.entry_price
                 close_signal = (now_signal == -1 and self.last_signal == 1)
@@ -142,7 +149,7 @@ class BinanceBot:
                     else:
                         self.last_signal = 0
 
-            # 3. 포지션쇼트 유지
+            # 숏 청산 조건
             if self.position == -1:
                 pnl = (self.entry_price - current_price) / self.entry_price
                 close_signal = (now_signal == 1 and self.last_signal == -1)
