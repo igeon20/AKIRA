@@ -32,9 +32,9 @@ class BinanceBot:
         self.entry_time = 0
         # 진입과 청산 기준
         self.TP_initial = 0.04  # 4%
-        self.SL_initial = -0.015 # -1.5%
-        self.TP_dynamic = 0.04   # 0.2% (3분이상 경과시 약간 더 빨리 청산)
-        self.SL_dynamic = -0.001  # -0.1%
+        self.SL_initial = -0.04 # -1.5%
+        self.TP_dynamic = 0.02   # 0.2% (3분이상 경과시 약간 더 빨리 청산)
+        self.SL_dynamic = -0.02  # -0.1%
         self.max_position_ratio = 0.95  # 잔고의 95%까지만 포지션 보유
 
         try:
