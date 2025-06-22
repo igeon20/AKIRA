@@ -55,7 +55,6 @@ class BinanceBot:
             return None
 
     def _calc_qty(self, price, factor=1.0):
-        # factor=1.0이면 평상시, 0.4면 보수적 진입
         usdt = max(self.balance * 0.1 * factor, 2.0)
         raw_qty = usdt / price
         qty = max(round(raw_qty, self.qty_precision), self.min_qty)
@@ -74,7 +73,6 @@ class BinanceBot:
             return 0
 
     def adjust_tp_sl(self):
-        # 진입 3분 넘으면 더 좁게 TP/SL 조정
         if self.position == 0 or self.entry_time == 0:
             return self.TP_initial, self.SL_initial
         elapsed = time.time() - self.entry_time
@@ -129,13 +127,12 @@ class BinanceBot:
                         self.last_trade_time = now
                 # 기존포지션이 있고, 같은 방향 신호 → "보수적 중복진입"
                 elif self.position == now_signal:
-                    factor = 0.4  # 보수적으로 진입(기존보다 적게)
+                    factor = 0.4
                     qty = self._calc_qty(current_price, factor)
                     if qty >= self.min_qty:
                         self._add_position("LONG" if now_signal == 1 else "SHORT", current_price, qty)
                         self.last_signal = now_signal
                         self.last_trade_time = now
-                        # 중복진입시 TP 추가로 늘려줌(익절만큼만 바로 청산, 손실은 보수적으로!)
                         self.TP_initial += 0.002
                         self.TP_dynamic += 0.001
                         self.trade_logs.append("[추가진입] 신호방향 중복. 추가 소량진입. TP 상향조정")
@@ -149,7 +146,6 @@ class BinanceBot:
                     else ((self.entry_price - current_price) / self.entry_price)
                 take_profit_hit = pnl >= tp
                 stop_loss_hit = pnl <= sl
-                # 중복진입이면 TP가 더 큼!
                 if take_profit_hit or stop_loss_hit:
                     self._close_position(current_price, pnl, self.last_qty)
                     self.last_signal = 0
@@ -157,7 +153,6 @@ class BinanceBot:
                     self.entry_price = None
                     self.last_qty = 0
                     self.entry_time = 0
-                    # TP/SL 초기화
                     self.TP_initial = 0.005
                     self.TP_dynamic = 0.002
 
@@ -169,4 +164,70 @@ class BinanceBot:
 
             if self.balance <= 3.0: # 3달러 이하에서 운용 중지
                 self.running = False
-                self.trade_logs
+                self.trade_logs.append("[종료] 💀 잔고 소진 - 봇 자동 종료")
+                break
+
+            time.sleep(60)
+
+        self.trade_logs.append("[종료] 봇 정지 끝")
+
+    def stop(self):
+        self.running = False
+        self.trade_logs.append("[수동정지] 사용자 요청 봇 중지")
+
+    def _enter_position(self, side, price, qty):
+        try:
+            order = self.client.futures_create_order(
+                symbol=self.symbol,
+                side="BUY" if side == "LONG" else "SELL",
+                type="MARKET",
+                quantity=qty
+            )
+            self.entry_price = price
+            self.position = 1 if side == "LONG" else -1
+            self.last_qty = qty
+            self.trade_logs.append(f"[진입] {side} @ {price:.2f} / 수량: {qty:.4f}")
+            self.trade_logs.append(f"잔고: {self.balance:.2f} USDT")
+        except Exception as e:
+            self.trade_logs.append(f"[진입실패] {side} @ {price:.2f}: {e}")
+
+    def _add_position(self, side, price, qty):
+        try:
+            order = self.client.futures_create_order(
+                symbol=self.symbol,
+                side="BUY" if side == "LONG" else "SELL",
+                type="MARKET",
+                quantity=qty
+            )
+            # 평균 단가 재계산
+            new_total_qty = self.last_qty + qty
+            if new_total_qty > 0:
+                self.entry_price = (self.entry_price * self.last_qty + price * qty) / new_total_qty
+            self.last_qty = new_total_qty
+            self.trade_logs.append(f"[중복진입] {side} 추가 @ {price:.2f} / 수량: {qty:.4f}")
+            self.trade_logs.append(f"잔고: {self.balance:.2f} USDT")
+        except Exception as e:
+            self.trade_logs.append(f"[중복진입실패] {side} @ {price:.2f}: {e}")
+
+    def _close_position(self, price, pnl, qty):
+        side = "SELL" if self.position == 1 else "BUY"
+        try:
+            order = self.client.futures_create_order(
+                symbol=self.symbol,
+                side=side,
+                type="MARKET",
+                quantity=qty
+            )
+            # 수수료 감안
+            commission = abs(qty) * price * 0.0004 # 왕복 0.04% 가정
+            profit = self.balance * (pnl * self.leverage) - commission
+            self.balance += profit
+            self.trade_logs.append(f"[청산] {'LONG' if self.position == 1 else 'SHORT'} CLOSE @ {price:.2f}")
+            self.trade_logs.append(f"[손익] {pnl*100:.2f}% ({self.leverage}배), {profit:.2f} → 잔고:{self.balance:.2f} USDT")
+        except Exception as e:
+            self.trade_logs.append(f"[청산실패] @ {price:.2f}: {e}")
+
+        self.position = 0
+        self.entry_price = None
+        self.last_qty = 0
+        self.entry_time = 0
