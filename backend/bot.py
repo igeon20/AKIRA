@@ -31,9 +31,9 @@ class BinanceBot:
         self.last_trade_time = 0
         self.entry_time = 0
         # 진입과 청산 기준
-        self.TP_initial = 0.003  # 0.3%
-        self.SL_initial = -0.0015 # -0.15%
-        self.TP_dynamic = 0.002   # 0.2% (3분이상 경과시 약간 더 빨리 청산)
+        self.TP_initial = 0.04  # 4%
+        self.SL_initial = -0.015 # -1.5%
+        self.TP_dynamic = 0.04   # 0.2% (3분이상 경과시 약간 더 빨리 청산)
         self.SL_dynamic = -0.001  # -0.1%
         self.max_position_ratio = 0.95  # 잔고의 95%까지만 포지션 보유
 
@@ -127,7 +127,7 @@ class BinanceBot:
         while self.running:
             df = self.fetch_ohlcv()
             if df is None:
-                time.sleep(10)
+                time.sleep(5)
                 continue
 
             df['Willr'] = ta.momentum.williams_r(df['High'], df['Low'], df['Close'], lbp=14)
@@ -187,8 +187,8 @@ class BinanceBot:
                     self.entry_price = None
                     self.last_qty = 0
                     self.entry_time = 0
-                    self.TP_initial = 0.003
-                    self.TP_dynamic = 0.002
+                    self.TP_initial = 0.01
+                    self.TP_dynamic = 0.001
 
             # 포지션 상태 로그
             self._log_position_status(current_price)
@@ -203,7 +203,7 @@ class BinanceBot:
                 self.trade_logs.append("[종료] 💀 잔고 소진 - 봇 자동 종료")
                 break
 
-            time.sleep(60)  # 원래 1분, 더 짧게 하려면 조절!
+            time.sleep(5)  # 원래 1분, 더 짧게 하려면 조절!
 
         self.trade_logs.append("[종료] 봇 정지 끝")
 
