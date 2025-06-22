@@ -81,9 +81,9 @@ class BinanceBot:
         rsi = float(df['RSI'].iloc[-1])
         vol = float(df['Volume'].iloc[-1])
         vol_ma = float(df['Vol_MA5'].iloc[-1])
-        if (willr < -80) and (rsi < 36) and (vol > vol_ma * 1.05):
+        if (willr < -80) and (rsi < 43) and (vol > vol_ma * 1.05):
             return 1
-        elif (willr > -20) and (rsi > 64) and (vol > vol_ma * 1.05):
+        elif (willr > -20) and (rsi > 57) and (vol > vol_ma * 1.05):
             return -1
         else:
             return 0
