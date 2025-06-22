@@ -30,7 +30,7 @@ class BinanceBot:
         self.last_signal = 0
         self.last_trade_time = 0
         self.entry_time = 0
-        # 진입과 청산 기준 (보수적으로 조정)
+        # 진입과 청산 기준
         self.TP_initial = 0.003  # 0.3%
         self.SL_initial = -0.0015 # -0.15%
         self.TP_dynamic = 0.002   # 0.2% (3분이상 경과시 약간 더 빨리 청산)
@@ -60,7 +60,6 @@ class BinanceBot:
     def total_position_value(self, price=None):
         if self.position == 0 or self.last_qty == 0 or self.entry_price is None:
             return 0
-        # price=None 이면 entry_price로 계산, 아니면 (중복진입 전 체크에 현재가 사용)
         use_price = self.entry_price if price is None else price
         return abs(use_price * self.last_qty)
 
@@ -73,7 +72,6 @@ class BinanceBot:
             invest = max(min(max_position_value - cur_pos_value, invest), 0)
         raw_qty = invest / price
         qty = max(round(raw_qty, self.qty_precision), self.min_qty)
-        # 실제 투자규모 초과불가
         if cur_pos_value + (qty * price) > max_position_value:
             qty = max(self.min_qty, round((max_position_value - cur_pos_value)/price, self.qty_precision))
         return qty
@@ -100,19 +98,24 @@ class BinanceBot:
         else:
             return self.TP_initial, self.SL_initial
 
-    # 실시간 포지션 로그(진입가, 현시가, PNL%, 수량, 잔고)
+    # [수정] 실시간 포지션 로그(예상잔고 포함)
     def _log_position_status(self, cur_price):
         if self.position != 0 and self.last_qty > 0 and self.entry_price is not None:
             pnl = ((cur_price - self.entry_price) / self.entry_price) \
                 if self.position == 1 else ((self.entry_price - cur_price) / self.entry_price)
             pnl_pct = pnl * self.leverage * 100
-            status = "[포지션상태] {side} / 진입가 {entry} / 현시가 {cur} / 수량 {qty} / 손익:{pnl:.2f}% / 잔고 {bal:.2f} USDT".format(
+            # 예상잔고 계산 (즉시청산 가정)
+            commission = abs(self.last_qty) * cur_price * 0.0004  # 왕복 0.04%
+            profit = self.balance * (pnl * self.leverage) - commission
+            expected_balance = self.balance + profit
+            status = "[포지션상태] {side} / 진입가 {entry} / 현시가 {cur} / 수량 {qty} / 손익:{pnl:.2f}% / 잔고 {bal:.2f} USDT / 예상잔고 {exp_bal:.2f} USDT".format(
                 side=("LONG" if self.position == 1 else "SHORT"),
                 entry=round(self.entry_price,2),
                 cur=round(cur_price,2),
                 qty=round(self.last_qty,4),
                 pnl=pnl_pct,
-                bal=self.balance
+                bal=self.balance,
+                exp_bal=expected_balance
             )
             if len(self.trade_logs) == 0 or self.trade_logs[-1] != status:
                 self.trade_logs.append(status)
@@ -140,9 +143,8 @@ class BinanceBot:
             now = time.time()
             tp, sl = self.adjust_tp_sl()
 
-            # 진입/중복진입 로직 (잔고 초과 방지)
+            # 진입/중복진입 로직
             if now_signal != 0:
-                # 탈반전 혹은 처음 진입
                 if self.position == 0 or now_signal != self.position:
                     qty = self._calc_qty(current_price, 1.0)
                     if qty < self.min_qty:
@@ -159,7 +161,6 @@ class BinanceBot:
                         self.last_signal = now_signal
                         self.position = now_signal
                         self.last_trade_time = now
-                # 중복 진입 시 (잔고 한도 내에서만)
                 elif self.position == now_signal:
                     qty = self._calc_qty(current_price, 0.4)  # 보수적/소량
                     if qty >= self.min_qty:
@@ -171,6 +172,7 @@ class BinanceBot:
                         self.trade_logs.append("[추가진입] 신호방향 중복. 추가 소량진입. TP 상향조정")
                     else:
                         self.trade_logs.append(f"[중복진입실패] 최소수량 미만 or 잔고 초과: {qty:.6f}")
+
             # 청산 조건 (손익, 시간 등)
             if self.position != 0 and self.last_qty > 0:
                 tp, sl = self.adjust_tp_sl()
@@ -188,22 +190,20 @@ class BinanceBot:
                     self.TP_initial = 0.003
                     self.TP_dynamic = 0.002
 
-            # 포지션 상세 로그 매틱하게 남기기
+            # 포지션 상태 로그
             self._log_position_status(current_price)
 
-            # 한 줄로 대기로그 (중복 방지)
             position_status = {1: "LONG", -1: "SHORT", 0: "NO POSITION"}
             status_msg = f"[대기] {position_status[self.position]} 상태, Willr={willr:.1f}, RSI={rsi:.1f}, Vol/MA5={vol:.2f}/{vol_ma:.2f} 현가:{current_price:.2f}"
             if len(self.trade_logs) == 0 or self.trade_logs[-1] != status_msg:
                 self.trade_logs.append(status_msg)
 
-            # 잔고 3달러 이하면 종료
             if self.balance <= 3.0:
                 self.running = False
                 self.trade_logs.append("[종료] 💀 잔고 소진 - 봇 자동 종료")
                 break
 
-            time.sleep(60)
+            time.sleep(60)  # 원래 1분, 더 짧게 하려면 조절!
 
         self.trade_logs.append("[종료] 봇 정지 끝")
 
