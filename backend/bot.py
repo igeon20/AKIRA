@@ -8,7 +8,7 @@ import ta
 load_dotenv()
 
 class BinanceBot:
-    MIN_NOTIONAL = 100  # BTCUSDT 기준, 바이낸스 상품마다 다름! (다른 코인 쓸땐 반드시 확인/수정!)
+    MIN_NOTIONAL = 100  # BTCUSDT 기준
 
     def __init__(self):
         self.TESTNET_URL = os.getenv("BINANCE_BASE_URL")
@@ -32,8 +32,8 @@ class BinanceBot:
         self.entry_time = 0
 
         self.TP_initial = 0.04     # +4%
-        self.TP_adjusted = 0.02    # +2%
-        self.SL = -0.02            # -2% (TP, SL - 곱연산/점진적 조정 완전 제거)
+        self.TP_adjusted = 0.02    # +2% (3분 이후)
+        self.SL = -0.02            # -2%
 
         self.running = False
         self.trade_logs = ["🤖[봇초기화]🤖 리스크 관리 + 진입 신호 상세 기록"]
@@ -81,7 +81,6 @@ class BinanceBot:
         rsi = float(df['RSI'].iloc[-1])
         vol = float(df['Volume'].iloc[-1])
         vol_ma = float(df['Vol_MA5'].iloc[-1])
-        # 진입 신호 (예제 신호, 필요하다면 조정하세요)
         if (willr < -80) and (rsi < 43) and (vol > vol_ma * 1.05):
             return 1  # 롱
         elif (willr > -20) and (rsi > 57) and (vol > vol_ma * 1.05):
@@ -96,7 +95,6 @@ class BinanceBot:
         return self.TP_initial if elapsed < 3*60 else self.TP_adjusted
 
     def _can_trade(self, price, qty):
-        # 최소 주문 금액(Notional) 체크
         return price * qty >= self.MIN_NOTIONAL
 
     def _log_position_status(self, cur_price):
@@ -104,7 +102,6 @@ class BinanceBot:
             pnl = ((cur_price - self.entry_price) / self.entry_price) \
                 if self.position == 1 else ((self.entry_price - cur_price) / self.entry_price)
             pnl_pct = pnl * self.leverage * 100
-
             commission = abs(self.last_qty) * cur_price * 0.0004  # 왕복 0.04%
             profit = self.balance * (pnl * self.leverage) - commission
             expected_balance = self.balance + profit
@@ -143,19 +140,19 @@ class BinanceBot:
             tp = self.adjust_tp()
             sl = self.SL
 
-            # 진입/중복진입 로직 (TP/SL 조건만, 추가 진입은 비활성화)
+            # 진입/중복진입 로직
             if now_signal != 0 and (self.position == 0 or now_signal != self.position):
                 qty = self._calc_qty(current_price, 1.0)
                 if self._can_trade(current_price, qty):
                     if self.position != 0:
                         pnl = ((current_price - self.entry_price) / self.entry_price) if self.position == 1 \
                             else ((self.entry_price - current_price) / self.entry_price)
-                        if self._can_trade(current_price, self.last_qty):
-                            self._close_position(current_price, pnl, self.last_qty)
-                        else:
-                            self.trade_logs.append(
-                                f"[청산불가] 최소 notional 미만 (price*qty={current_price*self.last_qty:.2f} < {self.MIN_NOTIONAL}), 포지션 강제 종료 없이 감시중."
-                            )
+                        close_success = self._forcibly_close_position(current_price, pnl, self.last_qty)
+                        if not close_success:
+                            # 강제 청산 실패 -> 내부상태 clear (실제 실전에서는 관리자 알림, 슬랙 등 권장)
+                            self.trade_logs.append("[치명] 청산 불가로 내부상태 강제 초기화(실제포지션 잔존 가능!).")
+                            self._clear_position_state()
+                            continue
                         time.sleep(1)
                     self._enter_position("LONG" if now_signal == 1 else "SHORT", current_price, qty)
                     self.entry_time = now
@@ -166,25 +163,18 @@ class BinanceBot:
                         f"[진입불가] 최소 notional 미만 (price*qty={current_price*qty:.2f} < {self.MIN_NOTIONAL}), 주문안함."
                     )
 
-            # 청산 조건 (TP, SL)
+            # TP, SL 청산 시도
             if self.position != 0 and self.last_qty > 0:
                 tp = self.adjust_tp()
                 pnl = ((current_price - self.entry_price) / self.entry_price) if self.position == 1 \
                     else ((self.entry_price - current_price) / self.entry_price)
                 take_profit_hit = pnl >= tp
                 stop_loss_hit = pnl <= sl
-
                 if take_profit_hit or stop_loss_hit:
-                    if self._can_trade(current_price, self.last_qty):
-                        self._close_position(current_price, pnl, self.last_qty)
-                    else:
-                        self.trade_logs.append(
-                            f"[청산불가] 최소 notional 미만 (price*qty={current_price*self.last_qty:.2f} < {self.MIN_NOTIONAL}), 포지션 강제 종료 없이 감시중."
-                        )
-                    self.position = 0
-                    self.entry_price = None
-                    self.last_qty = 0
-                    self.entry_time = 0
+                    close_success = self._forcibly_close_position(current_price, pnl, self.last_qty)
+                    if not close_success:
+                        self.trade_logs.append("[치명] 청산 불가로 내부상태 강제 초기화(실제포지션 잔존 가능!).")
+                        self._clear_position_state()
 
             self._log_position_status(current_price)
             position_status = {1: "LONG", -1: "SHORT", 0: "NO POSITION"}
@@ -196,9 +186,7 @@ class BinanceBot:
                 self.running = False
                 self.trade_logs.append("[종료] 💀 잔고 소진 - 봇 자동 종료")
                 break
-
             time.sleep(5)
-
         self.trade_logs.append("[종료] 봇 정지 끝")
 
     def stop(self):
@@ -221,8 +209,15 @@ class BinanceBot:
         except Exception as e:
             self.trade_logs.append(f"[진입실패] {side} @ {price:.2f}: {e}")
 
-    def _close_position(self, price, pnl, qty):
+    def _forcibly_close_position(self, price, pnl, qty):
+        """
+        모든 수단으로 어떻게든 포지션을 끝낸다.
+        1. 시장가 > 실패시
+        2. 지정가(현가, reduceOnly) > 실패시
+        3. 마지막으로 내부상태라도 깨끗하게 정리(시스템적 안전 장치)
+        """
         side = "SELL" if self.position == 1 else "BUY"
+        # 1. MARKET
         try:
             order = self.client.futures_create_order(
                 symbol=self.symbol,
@@ -234,10 +229,33 @@ class BinanceBot:
             profit = self.balance * (pnl * self.leverage) - commission
             self.balance += profit
             pnl_pct = pnl * self.leverage * 100
-            self.trade_logs.append(f"[청산] {'LONG' if self.position == 1 else 'SHORT'} CLOSE @ {price:.2f} / 손익: {pnl_pct:.2f}% / 수량: {qty:.4f}")
+            self.trade_logs.append(f"[청산] {side} MARKET @ {price:.2f} / 손익: {pnl_pct:.2f}% / 수량: {qty:.4f}")
             self.trade_logs.append(f"[손익] {pnl*100:.2f}% (레버리지:{self.leverage}배), {profit:.2f} → 잔고:{self.balance:.2f} USDT")
-        except Exception as e:
-            self.trade_logs.append(f"[청산실패] @ {price:.2f}: {e}")
+            self._clear_position_state()
+            return True
+        except Exception as e1:
+            self.trade_logs.append(f"[청산실패] MARKET @ {price:.2f}: {e1}")
+        # 2. 지정가(현가) reduceOnly
+        try:
+            order = self.client.futures_create_order(
+                symbol=self.symbol,
+                side=side,
+                type="LIMIT",
+                price=str(price),
+                timeInForce="GTC",
+                quantity=qty,
+                reduceOnly=True
+            )
+            self.trade_logs.append(f"[청산시도] LIMIT @ {price:.2f}(reduceOnly)")
+            # 성공했다고 가정하고, 내부상태 정리
+            self._clear_position_state()
+            return True
+        except Exception as e2:
+            self.trade_logs.append(f"[청산실패] LIMIT/reduceOnly @ {price:.2f}: {e2}")
+        # 3. 포지션 종료 못하더라도 내부 상태 무조건 리셋 (실전에서는 관리자 알림필수!)
+        return False
+
+    def _clear_position_state(self):
         self.position = 0
         self.entry_price = None
         self.last_qty = 0
