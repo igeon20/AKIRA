@@ -22,7 +22,7 @@ class BinanceBot:
         self.symbol = "BTCUSDT"
         self.qty_precision = 3
         self.min_qty = 0.001
-        self.leverage = 125  # 레버리지는 진입과 포지션 유지 증거금에만 영향
+        self.leverage = 125
         self.max_position_ratio = 0.95
         self.balance = 50.0
 
@@ -56,6 +56,15 @@ class BinanceBot:
             return df
         except Exception as e:
             self.trade_logs.append(f"[가격수집실패] {e}")
+            return None
+
+    def get_realtime_price(self):
+        """ 실시간(틱) 가격 가져오기 """
+        try:
+            price = float(self.client.futures_symbol_ticker(symbol=self.symbol)['price'])
+            return price
+        except Exception as e:
+            self.trade_logs.append(f"[실시간가격에러] {e}")
             return None
 
     def total_position_value(self, price=None):
@@ -96,7 +105,6 @@ class BinanceBot:
             pnl = ((cur_price - self.entry_price) / self.entry_price) if self.position == 1 else ((self.entry_price - cur_price) / self.entry_price)
             commission = abs(self.last_qty) * cur_price * 0.0004
             realised_pnl = ((cur_price - self.entry_price) if self.position == 1 else (self.entry_price - cur_price)) * self.last_qty
-            margin_used = (self.entry_price * self.last_qty) / self.leverage
             pnl_pct = ((cur_price - self.entry_price) / self.entry_price * 100) if self.position == 1 else ((self.entry_price - cur_price) / self.entry_price * 100)
             status = (
                 f"[포지션상태] {'LONG' if self.position == 1 else 'SHORT'} / 진입가 {self.entry_price:.2f} / 현시가 {cur_price:.2f} / 수량 {self.last_qty:.4f} / "
@@ -117,11 +125,15 @@ class BinanceBot:
             df['RSI'] = ta.momentum.RSIIndicator(df['Close'], window=14).rsi()
             df['Vol_MA5'] = df['Volume'].rolling(5).mean()
 
-            current_price = float(df['Close'].iloc[-1])
             willr = float(df['Willr'].iloc[-1])
             rsi = float(df['RSI'].iloc[-1])
             vol = float(df['Volume'].iloc[-1])
             vol_ma = float(df['Vol_MA5'].iloc[-1])
+            
+            # ----------- 실시간가격(틱) 추가 -------------
+            current_price = self.get_realtime_price()
+            if not current_price:
+                current_price = float(df['Close'].iloc[-1])
 
             now_signal = self.check_entry_signal(df)
             now = time.time()
@@ -143,16 +155,17 @@ class BinanceBot:
                         f"[진입불가] 최소 notional 미만 (price*qty={current_price*qty:.2f} < {self.MIN_NOTIONAL})"
                     )
 
-            # 익절, 손절 판정
-            if self.position != 0 and self.last_qty > 0:
-                up_line = self.entry_price * (1 + self.TP)
-                dn_line = self.entry_price * (1 + self.SL)
-                if self.position == 1:
-                    tp_hit = current_price >= up_line
-                    sl_hit = current_price <= dn_line
-                else:
+            # --- TP, SL 판정 정확히/실시간으로 ---
+            if self.position != 0 and self.last_qty > 0 and self.entry_price is not None:
+                if self.position == 1:  # LONG
+                    tp_hit = current_price >= self.entry_price * (1 + self.TP)
+                    sl_hit = current_price <= self.entry_price * (1 + self.SL)
+                elif self.position == -1:  # SHORT
                     tp_hit = current_price <= self.entry_price * (1 - self.TP)
                     sl_hit = current_price >= self.entry_price * (1 - self.SL)
+                else:
+                    tp_hit = False
+                    sl_hit = False
                 if tp_hit or sl_hit:
                     self._forcibly_close_position(current_price, self.last_qty)
 
@@ -234,3 +247,7 @@ class BinanceBot:
         self.entry_price = None
         self.last_qty = 0
         self.entry_time = 0
+
+# 사용 예시
+# bot = BinanceBot()
+# bot.start()
