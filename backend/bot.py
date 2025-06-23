@@ -31,18 +31,22 @@ class BinanceBot:
         self.last_qty = 0
         self.entry_time = 0
 
-        # 손절/익절은 레버리지 적용 전 기준.
         self.TP = 0.04     # +4%
         self.SL = -0.02    # -2%
 
         self.running = False
         self.trade_logs = ["🤖[봇초기화]🤖"]
+        print(self.trade_logs[-1])
 
         try:
             self.client.futures_change_leverage(symbol=self.symbol, leverage=self.leverage)
-            self.trade_logs.append(f"[설정] 레버리지 {self.leverage}배 적용 완료.")
+            msg = f"[설정] 레버리지 {self.leverage}배 적용 완료."
+            self.trade_logs.append(msg)
+            print(msg)
         except Exception as e:
-            self.trade_logs.append(f"[레버리지 실패] {e}")
+            msg = f"[레버리지 실패] {e}"
+            self.trade_logs.append(msg)
+            print(msg)
 
     def fetch_ohlcv(self, interval="1m"):
         try:
@@ -55,16 +59,19 @@ class BinanceBot:
             df[['Open','High','Low','Close','Volume']] = df[['Open','High','Low','Close','Volume']].astype(float)
             return df
         except Exception as e:
-            self.trade_logs.append(f"[가격수집실패] {e}")
+            msg = f"[가격수집실패] {e}"
+            self.trade_logs.append(msg)
+            print(msg)
             return None
 
     def get_realtime_price(self):
-        """ 실시간(틱) 가격 가져오기 """
         try:
             price = float(self.client.futures_symbol_ticker(symbol=self.symbol)['price'])
             return price
         except Exception as e:
-            self.trade_logs.append(f"[실시간가격에러] {e}")
+            msg = f"[실시간가격에러] {e}"
+            self.trade_logs.append(msg)
+            print(msg)
             return None
 
     def total_position_value(self, price=None):
@@ -112,10 +119,13 @@ class BinanceBot:
             )
             if len(self.trade_logs) == 0 or self.trade_logs[-1] != status:
                 self.trade_logs.append(status)
+                print(status)
 
     def start(self):
         self.running = True
-        self.trade_logs.append("[시작] 전략 봇 가동")
+        msg = "[시작] 전략 봇 가동"
+        self.trade_logs.append(msg)
+        print(msg)
         while self.running:
             df = self.fetch_ohlcv()
             if df is None:
@@ -129,8 +139,8 @@ class BinanceBot:
             rsi = float(df['RSI'].iloc[-1])
             vol = float(df['Volume'].iloc[-1])
             vol_ma = float(df['Vol_MA5'].iloc[-1])
-            
-            # ----------- 실시간가격(틱) 추가 -------------
+
+            # 실시간가
             current_price = self.get_realtime_price()
             if not current_price:
                 current_price = float(df['Close'].iloc[-1])
@@ -143,7 +153,6 @@ class BinanceBot:
                 qty = self._calc_qty(current_price, 1.0)
                 if self._can_trade(current_price, qty):
                     if self.position != 0:
-                        # 청산
                         self._forcibly_close_position(current_price, self.last_qty)
                         time.sleep(1)
                     self._enter_position("LONG" if now_signal == 1 else "SHORT", current_price, qty)
@@ -151,11 +160,10 @@ class BinanceBot:
                     self.position = now_signal
                     self.last_qty = qty
                 else:
-                    self.trade_logs.append(
-                        f"[진입불가] 최소 notional 미만 (price*qty={current_price*qty:.2f} < {self.MIN_NOTIONAL})"
-                    )
+                    msg = f"[진입불가] 최소 notional 미만 (price*qty={current_price*qty:.2f} < {self.MIN_NOTIONAL})"
+                    self.trade_logs.append(msg)
+                    print(msg)
 
-            # --- TP, SL 판정 정확히/실시간으로 ---
             if self.position != 0 and self.last_qty > 0 and self.entry_price is not None:
                 if self.position == 1:  # LONG
                     tp_hit = current_price >= self.entry_price * (1 + self.TP)
@@ -174,17 +182,24 @@ class BinanceBot:
             status_msg = f"[대기] {position_status[self.position]} 상태, Willr={willr:.1f}, RSI={rsi:.1f}, Vol/MA5={vol:.2f}/{vol_ma:.2f} 현가:{current_price:.2f}"
             if len(self.trade_logs) == 0 or self.trade_logs[-1] != status_msg:
                 self.trade_logs.append(status_msg)
+                print(status_msg)
 
             if self.balance <= 3.0:
                 self.running = False
-                self.trade_logs.append("[종료] 💀 잔고 소진 - 봇 자동 종료")
+                msg = "[종료] 💀 잔고 소진 - 봇 자동 종료"
+                self.trade_logs.append(msg)
+                print(msg)
                 break
             time.sleep(5)
-        self.trade_logs.append("[종료] 봇 정지 끝")
+        msg = "[종료] 봇 정지 끝"
+        self.trade_logs.append(msg)
+        print(msg)
 
     def stop(self):
         self.running = False
-        self.trade_logs.append("[수동정지] 사용자 요청 봇 중지")
+        msg = "[수동정지] 사용자 요청 봇 중지"
+        self.trade_logs.append(msg)
+        print(msg)
 
     def _enter_position(self, side, price, qty):
         try:
@@ -197,10 +212,16 @@ class BinanceBot:
             self.entry_price = price
             self.position = 1 if side == "LONG" else -1
             self.last_qty = qty
-            self.trade_logs.append(f"[진입] {side} @ {price:.2f} / 수량: {qty:.4f}")
-            self.trade_logs.append(f"잔고: {self.balance:.2f} USDT")
+            msg1 = f"[진입] {side} @ {price:.2f} / 수량: {qty:.4f}"
+            msg2 = f"잔고: {self.balance:.2f} USDT"
+            self.trade_logs.append(msg1)
+            self.trade_logs.append(msg2)
+            print(msg1)
+            print(msg2)
         except Exception as e:
-            self.trade_logs.append(f"[진입실패] {side} @ {price:.2f}: {e}")
+            msg = f"[진입실패] {side} @ {price:.2f}: {e}"
+            self.trade_logs.append(msg)
+            print(msg)
 
     def _forcibly_close_position(self, price, qty):
         """
@@ -218,12 +239,18 @@ class BinanceBot:
             commission = abs(qty) * price * 0.0004
             pnl_pct = ((price - self.entry_price) / self.entry_price * 100) if self.position == 1 else ((self.entry_price - price) / self.entry_price * 100)
             self.balance += realised_pnl - commission
-            self.trade_logs.append(f"[청산] {side} MARKET @ {price:.2f} / 원금기준손익:{pnl_pct:.2f}% / 수량: {qty:.4f}")
-            self.trade_logs.append(f"[손익] 실손익:{realised_pnl:.4f} USDT (수수료:{commission:.4f}), 잔고:{self.balance:.2f} USDT")
+            msg1 = f"[청산] {side} MARKET @ {price:.2f} / 원금기준손익:{pnl_pct:.2f}% / 수량: {qty:.4f}"
+            msg2 = f"[손익] 실손익:{realised_pnl:.4f} USDT (수수료:{commission:.4f}), 잔고:{self.balance:.2f} USDT"
+            self.trade_logs.append(msg1)
+            self.trade_logs.append(msg2)
+            print(msg1)
+            print(msg2)
             self._clear_position_state()
             return True
         except Exception as e1:
-            self.trade_logs.append(f"[청산실패] MARKET @ {price:.2f}: {e1}")
+            msg = f"[청산실패] MARKET @ {price:.2f}: {e1}"
+            self.trade_logs.append(msg)
+            print(msg)
         try:
             order = self.client.futures_create_order(
                 symbol=self.symbol,
@@ -234,11 +261,15 @@ class BinanceBot:
                 quantity=qty,
                 reduceOnly=True
             )
-            self.trade_logs.append(f"[청산시도] LIMIT @ {price:.2f}(reduceOnly)")
+            msg = f"[청산시도] LIMIT @ {price:.2f}(reduceOnly)"
+            self.trade_logs.append(msg)
+            print(msg)
             self._clear_position_state()
             return True
         except Exception as e2:
-            self.trade_logs.append(f"[청산실패] LIMIT @ {price:.2f}: {e2}")
+            msg = f"[청산실패] LIMIT @ {price:.2f}: {e2}"
+            self.trade_logs.append(msg)
+            print(msg)
         self._clear_position_state()
         return False
 
@@ -247,7 +278,3 @@ class BinanceBot:
         self.entry_price = None
         self.last_qty = 0
         self.entry_time = 0
-
-# 사용 예시
-# bot = BinanceBot()
-# bot.start()
