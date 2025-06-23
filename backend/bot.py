@@ -1,13 +1,15 @@
 import os
 import time
-import pandas as pd
-import ta   # pip install ta
 from dotenv import load_dotenv
 from binance.client import Client
+import pandas as pd
+import ta
 
 load_dotenv()
 
 class BinanceBot:
+    MIN_NOTIONAL = 100  # BTCUSDT 기준, 바이낸스 상품마다 다름! (다른 코인 쓸땐 반드시 확인/수정!)
+
     def __init__(self):
         self.TESTNET_URL = os.getenv("BINANCE_BASE_URL")
         self.client = Client(
@@ -17,7 +19,6 @@ class BinanceBot:
         )
         self.client.API_URL = self.TESTNET_URL
 
-        # 심볼 및 기본설정
         self.symbol = "BTCUSDT"
         self.qty_precision = 3
         self.min_qty = 0.001
@@ -25,16 +26,14 @@ class BinanceBot:
         self.max_position_ratio = 0.95
         self.balance = 50.0
 
-        # 포지션 상태 변수
         self.position = 0          # 1: LONG, -1: SHORT, 0: NO POSITION
         self.entry_price = None
         self.last_qty = 0
         self.entry_time = 0
 
-        # 전략별 TP/SL
-        self.TP_initial = 0.04     # +4% (초기)
-        self.SL = -0.02            # -2% (고정)
-        self.TP_adjusted = 0.02    # +2% (3분 후)
+        self.TP_initial = 0.04     # +4%
+        self.TP_adjusted = 0.02    # +2%
+        self.SL = -0.02            # -2% (TP, SL - 곱연산/점진적 조정 완전 제거)
 
         self.running = False
         self.trade_logs = ["🤖[봇초기화]🤖 리스크 관리 + 진입 신호 상세 기록"]
@@ -82,23 +81,23 @@ class BinanceBot:
         rsi = float(df['RSI'].iloc[-1])
         vol = float(df['Volume'].iloc[-1])
         vol_ma = float(df['Vol_MA5'].iloc[-1])
-        # 진입 신호 (예제 신호)
+        # 진입 신호 (예제 신호, 필요하다면 조정하세요)
         if (willr < -80) and (rsi < 43) and (vol > vol_ma * 1.05):
-            return 1
+            return 1  # 롱
         elif (willr > -20) and (rsi > 57) and (vol > vol_ma * 1.05):
-            return -1
+            return -1  # 숏
         else:
-            return 0
+            return 0   # 진입 없음
 
     def adjust_tp(self):
-        """진입 후 3분 넘으면 TP 2%로 감소"""
         if self.position == 0 or self.entry_time == 0:
             return self.TP_initial
         elapsed = time.time() - self.entry_time
-        if elapsed > 3*60:
-            return self.TP_adjusted
-        else:
-            return self.TP_initial
+        return self.TP_initial if elapsed < 3*60 else self.TP_adjusted
+
+    def _can_trade(self, price, qty):
+        # 최소 주문 금액(Notional) 체크
+        return price * qty >= self.MIN_NOTIONAL
 
     def _log_position_status(self, cur_price):
         if self.position != 0 and self.last_qty > 0 and self.entry_price is not None:
@@ -137,47 +136,56 @@ class BinanceBot:
             willr = float(df['Willr'].iloc[-1])
             rsi = float(df['RSI'].iloc[-1])
             vol = float(df['Volume'].iloc[-1])
-            vol_ma= float(df['Vol_MA5'].iloc[-1])
+            vol_ma = float(df['Vol_MA5'].iloc[-1])
 
             now_signal = self.check_entry_signal(df)
             now = time.time()
-            tp = self.adjust_tp()   # 3분/2% 자동조정
-            sl = self.SL            # SL은 한결같이 -2%
+            tp = self.adjust_tp()
+            sl = self.SL
 
-            # 진입/중복진입 로직
-            if now_signal != 0:
-                if self.position == 0 or now_signal != self.position:
-                    qty = self._calc_qty(current_price, 1.0)
-                    if qty < self.min_qty:
-                        self.trade_logs.append(f"[진입실패] 최소 수량({self.min_qty}) 미만. 계산수량: {qty:.6f}")
-                    else:
-                        if self.position != 0:
-                            pnl = ((current_price - self.entry_price) / self.entry_price) if self.position == 1 \
-                                else ((self.entry_price - current_price) / self.entry_price)
+            # 진입/중복진입 로직 (TP/SL 조건만, 추가 진입은 비활성화)
+            if now_signal != 0 and (self.position == 0 or now_signal != self.position):
+                qty = self._calc_qty(current_price, 1.0)
+                if self._can_trade(current_price, qty):
+                    if self.position != 0:
+                        pnl = ((current_price - self.entry_price) / self.entry_price) if self.position == 1 \
+                            else ((self.entry_price - current_price) / self.entry_price)
+                        if self._can_trade(current_price, self.last_qty):
                             self._close_position(current_price, pnl, self.last_qty)
-                            time.sleep(1)
-                        self._enter_position("LONG" if now_signal == 1 else "SHORT", current_price, qty)
-                        self.entry_time = now
-                        self.position = now_signal
-                        self.last_qty = qty
-                elif self.position == now_signal:
-                    # 동일방향 중복 진입은 여기서는 비활성화(원하면 추가)
-                    pass
+                        else:
+                            self.trade_logs.append(
+                                f"[청산불가] 최소 notional 미만 (price*qty={current_price*self.last_qty:.2f} < {self.MIN_NOTIONAL}), 포지션 강제 종료 없이 감시중."
+                            )
+                        time.sleep(1)
+                    self._enter_position("LONG" if now_signal == 1 else "SHORT", current_price, qty)
+                    self.entry_time = now
+                    self.position = now_signal
+                    self.last_qty = qty
+                else:
+                    self.trade_logs.append(
+                        f"[진입불가] 최소 notional 미만 (price*qty={current_price*qty:.2f} < {self.MIN_NOTIONAL}), 주문안함."
+                    )
 
             # 청산 조건 (TP, SL)
             if self.position != 0 and self.last_qty > 0:
+                tp = self.adjust_tp()
                 pnl = ((current_price - self.entry_price) / self.entry_price) if self.position == 1 \
                     else ((self.entry_price - current_price) / self.entry_price)
                 take_profit_hit = pnl >= tp
                 stop_loss_hit = pnl <= sl
+
                 if take_profit_hit or stop_loss_hit:
-                    self._close_position(current_price, pnl, self.last_qty)
+                    if self._can_trade(current_price, self.last_qty):
+                        self._close_position(current_price, pnl, self.last_qty)
+                    else:
+                        self.trade_logs.append(
+                            f"[청산불가] 최소 notional 미만 (price*qty={current_price*self.last_qty:.2f} < {self.MIN_NOTIONAL}), 포지션 강제 종료 없이 감시중."
+                        )
                     self.position = 0
                     self.entry_price = None
                     self.last_qty = 0
                     self.entry_time = 0
 
-            # 포지션 상태 로그
             self._log_position_status(current_price)
             position_status = {1: "LONG", -1: "SHORT", 0: "NO POSITION"}
             status_msg = f"[대기] {position_status[self.position]} 상태, Willr={willr:.1f}, RSI={rsi:.1f}, Vol/MA5={vol:.2f}/{vol_ma:.2f} 현가:{current_price:.2f}"
@@ -189,7 +197,7 @@ class BinanceBot:
                 self.trade_logs.append("[종료] 💀 잔고 소진 - 봇 자동 종료")
                 break
 
-            time.sleep(5) # 5초마다 반복
+            time.sleep(5)
 
         self.trade_logs.append("[종료] 봇 정지 끝")
 
