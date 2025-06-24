@@ -69,10 +69,12 @@ class BinanceBot:
             self._log(f"[신호] {signal} / 현재가: {current_price}")
 
             if signal == 1 and self.position <= 0:
+                self._log("[시도] 롱 진입")
                 self.close_position(current_price)
                 qty = self.calc_max_qty(current_price)
                 self.enter_position("BUY", qty, current_price)
             elif signal == -1 and self.position >= 0:
+                self._log("[시도] 숏 진입")
                 self.close_position(current_price)
                 qty = self.calc_max_qty(current_price)
                 self.enter_position("SELL", qty, current_price)
@@ -115,9 +117,9 @@ class BinanceBot:
         if np.isnan(willr) or np.isnan(rsi) or np.isnan(vol_ma):
             return 0
 
-        if willr < -80 and rsi < 43 and vol > vol_ma * 1.05:
+        if willr < -85 and rsi < 38 and vol > vol_ma * 1.05:
             return 1
-        elif willr > -20 and rsi > 57 and vol > vol_ma * 1.05:
+        elif willr > -15 and rsi > 62 and vol > vol_ma * 1.05:
             return -1
         return 0
 
@@ -132,7 +134,9 @@ class BinanceBot:
     def calc_max_qty(self, price):
         notional = self.balance * self.leverage
         raw_qty = notional / price
-        return round(max(raw_qty, self.min_qty), self.qty_precision)
+        qty = round(max(raw_qty, self.min_qty), self.qty_precision)
+        self._log(f"[계산] 최대 수량: {qty} (레버리지 반영)")
+        return qty
 
     def enter_position(self, side, qty, price):
         try:
@@ -145,7 +149,8 @@ class BinanceBot:
             self.position = 1 if side == "BUY" else -1
             self.entry_price = price
             self.last_qty = qty
-            self._log(f"[진입] {side} 수량: {qty} 가격: {price}")
+            pos = "롱" if self.position == 1 else "숏"
+            self._log(f"[진입] {pos} 수량: {qty} 가격: {price}")
         except Exception as e:
             self._log(f"[진입 실패] {e}")
 
@@ -163,7 +168,8 @@ class BinanceBot:
             pnl = ((price - self.entry_price) if self.position == 1 else (self.entry_price - price)) * self.last_qty
             commission = price * self.last_qty * 0.0004
             self.balance += pnl - commission
-            self._log(f"[청산] {side} 수익: {pnl - commission:.4f} 잔고: {self.balance:.2f}")
+            pos = "롱" if self.position == 1 else "숏"
+            self._log(f"[청산] {pos} → {side} 수익: {pnl - commission:.4f} 잔고: {self.balance:.2f}")
         except Exception as e:
             self._log(f"[청산 실패] {e}")
         finally:
@@ -179,11 +185,11 @@ class BinanceBot:
             tp = self.entry_price * (1 + self.TP)
             sl = self.entry_price * (1 + self.SL)
             if current_price >= tp or current_price <= sl:
-                self._log(f"[TP/SL 조건] 롱 포지션에서 청산 조건 만족 (현재가: {current_price})")
+                self._log(f"[TP/SL 조건] 롱 포지션 청산 조건 만족 (현재가: {current_price})")
                 self.close_position(current_price)
         elif self.position == -1:
             tp = self.entry_price * (1 - self.TP)
             sl = self.entry_price * (1 - self.SL)
             if current_price <= tp or current_price >= sl:
-                self._log(f"[TP/SL 조건] 숏 포지션에서 청산 조건 만족 (현재가: {current_price})")
+                self._log(f"[TP/SL 조건] 숏 포지션 청산 조건 만족 (현재가: {current_price})")
                 self.close_position(current_price)
