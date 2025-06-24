@@ -14,7 +14,7 @@ class BinanceBot:
     QTY_PRECISION = 3
     MIN_QTY = 0.0047
     LEVERAGE = 125
-    MAX_POSITION_RATIO = 0.95
+    MAX_POSITION_RATIO = 1
     INIT_BALANCE = 50.0
 
     TP = 0.04
