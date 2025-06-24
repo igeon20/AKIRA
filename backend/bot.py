@@ -192,12 +192,12 @@ class BinanceBot:
 
         # --- Signal Logic ---
         # Long signal: Williams %R indicates oversold, RSI indicates oversold, and volume confirms
-        if willr < -85 and rsi < 38 and vol > vol_ma * 1.05:
-            self._log(f"[신호 발생] 롱 (Willr:{willr:.2f} < -85, RSI:{rsi:.2f} < 38, Vol:{vol:.2f} > Vol_MA:{vol_ma:.2f}*1.05)")
+        if willr < -75 and rsi < 40 and vol > vol_ma * 1.04:
+            self._log(f"[신호 발생] 롱 (Willr:{willr:.2f} < -75, RSI:{rsi:.2f} < 40, Vol:{vol:.2f} > Vol_MA:{vol_ma:.2f}*1.04)")
             return 1
         # Short signal: Williams %R indicates overbought, RSI indicates overbought, and volume confirms
-        elif willr > -15 and rsi > 62 and vol > vol_ma * 1.05:
-            self._log(f"[신호 발생] 숏 (Willr:{willr:.2f} > -15, RSI:{rsi:.2f} > 62, Vol:{vol:.2f} > Vol_MA:{vol_ma:.2f}*1.05)")
+        elif willr > -25 and rsi > 60 and vol > vol_ma * 1.04:
+            self._log(f"[신호 발생] 숏 (Willr:{willr:.2f} > -25, RSI:{rsi:.2f} > 60, Vol:{vol:.2f} > Vol_MA:{vol_ma:.2f}*1.04)")
             return -1
         # Neutral signal if no strong signal is generated
         return 0
