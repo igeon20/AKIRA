@@ -47,6 +47,12 @@ class BinanceBot:
         except Exception as e:
             self._log(f"[레버리지 설정 실패] {e}")
 
+    def _log(self, message):
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        log = f"[{timestamp}] {message}"
+        print(log)
+        self.trade_logs.append(log)
+
     def start_bot(self):
         self.running = True
         self._log("[봇 시작]")
@@ -54,11 +60,13 @@ class BinanceBot:
         while self.running:
             df = self.fetch_data()
             if df is None:
+                self._log("[경고] 데이터프레임 없음")
                 time.sleep(5)
                 continue
 
             signal = self.get_signal(df)
             current_price = self.get_price()
+            self._log(f"[신호] {signal} / 현재가: {current_price}")
 
             if signal == 1 and self.position <= 0:
                 self.close_position(current_price)
@@ -102,6 +110,8 @@ class BinanceBot:
         vol = df['Volume'].iloc[-1]
         vol_ma = df['Vol_MA5'].iloc[-1]
 
+        self._log(f"[지표] Willr: {willr:.2f}, RSI: {rsi:.2f}, Vol: {vol:.2f}, Vol_MA: {vol_ma:.2f}")
+
         if np.isnan(willr) or np.isnan(rsi) or np.isnan(vol_ma):
             return 0
 
@@ -115,7 +125,8 @@ class BinanceBot:
         try:
             price = float(self.client.futures_symbol_ticker(symbol=self.symbol)['price'])
             return price
-        except:
+        except Exception as e:
+            self._log(f"[가격 조회 실패] {e}")
             return None
 
     def calc_max_qty(self, price):
@@ -168,17 +179,11 @@ class BinanceBot:
             tp = self.entry_price * (1 + self.TP)
             sl = self.entry_price * (1 + self.SL)
             if current_price >= tp or current_price <= sl:
-                self._log(f"[관리] 롱 포지션 TP/SL 감지됨 ({current_price:.2f})")
+                self._log(f"[TP/SL 조건] 롱 포지션에서 청산 조건 만족 (현재가: {current_price})")
                 self.close_position(current_price)
         elif self.position == -1:
             tp = self.entry_price * (1 - self.TP)
             sl = self.entry_price * (1 - self.SL)
             if current_price <= tp or current_price >= sl:
-                self._log(f"[관리] 숏 포지션 TP/SL 감지됨 ({current_price:.2f})")
+                self._log(f"[TP/SL 조건] 숏 포지션에서 청산 조건 만족 (현재가: {current_price})")
                 self.close_position(current_price)
-
-    def _log(self, msg):
-        print(msg)
-        self.trade_logs.append(msg)
-        if len(self.trade_logs) > 100:
-            self.trade_logs.pop(0)
