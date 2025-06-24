@@ -45,11 +45,11 @@ class BinanceBot:
         try:
             self.client.futures_change_leverage(symbol=self.symbol, leverage=self.leverage)
         except Exception as e:
-            print(f"[레버리지 설정 실패] {e}")
+            self._log(f"[레버리지 설정 실패] {e}")
 
     def start_bot(self):
         self.running = True
-        print("[봇 시작]")
+        self._log("[봇 시작]")
 
         while self.running:
             df = self.fetch_data()
@@ -74,6 +74,7 @@ class BinanceBot:
 
     def stop(self):
         self.running = False
+        self._log("[봇 정지]")
 
     def fetch_data(self):
         try:
@@ -89,7 +90,7 @@ class BinanceBot:
             df['Vol_MA5'] = df['Volume'].rolling(5).mean()
             return df
         except Exception as e:
-            print(f"[데이터 수집 실패] {e}")
+            self._log(f"[데이터 수집 실패] {e}")
             return None
 
     def get_signal(self, df):
@@ -133,9 +134,9 @@ class BinanceBot:
             self.position = 1 if side == "BUY" else -1
             self.entry_price = price
             self.last_qty = qty
-            print(f"[진입] {side} 수량: {qty} 가격: {price}")
+            self._log(f"[진입] {side} 수량: {qty} 가격: {price}")
         except Exception as e:
-            print(f"[진입 실패] {e}")
+            self._log(f"[진입 실패] {e}")
 
     def close_position(self, price):
         if self.position == 0:
@@ -151,9 +152,9 @@ class BinanceBot:
             pnl = ((price - self.entry_price) if self.position == 1 else (self.entry_price - price)) * self.last_qty
             commission = price * self.last_qty * 0.0004
             self.balance += pnl - commission
-            print(f"[청산] {side} 수익: {pnl - commission:.4f} 잔고: {self.balance:.2f}")
+            self._log(f"[청산] {side} 수익: {pnl - commission:.4f} 잔고: {self.balance:.2f}")
         except Exception as e:
-            print(f"[청산 실패] {e}")
+            self._log(f"[청산 실패] {e}")
         finally:
             self.position = 0
             self.entry_price = None
@@ -167,9 +168,17 @@ class BinanceBot:
             tp = self.entry_price * (1 + self.TP)
             sl = self.entry_price * (1 + self.SL)
             if current_price >= tp or current_price <= sl:
+                self._log(f"[관리] 롱 포지션 TP/SL 감지됨 ({current_price:.2f})")
                 self.close_position(current_price)
         elif self.position == -1:
             tp = self.entry_price * (1 - self.TP)
             sl = self.entry_price * (1 - self.SL)
             if current_price <= tp or current_price >= sl:
+                self._log(f"[관리] 숏 포지션 TP/SL 감지됨 ({current_price:.2f})")
                 self.close_position(current_price)
+
+    def _log(self, msg):
+        print(msg)
+        self.trade_logs.append(msg)
+        if len(self.trade_logs) > 100:
+            self.trade_logs.pop(0)
