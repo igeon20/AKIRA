@@ -17,8 +17,8 @@ class BinanceBot:
     INIT_BALANCE = 50.0
 
     # TP 값을 0.04 (4%)에서 0.03 (3%)로 조정하여 더 빠른 익절 유도
-    TP = 0.03 
-    SL = -0.015
+    TP = 0.02 
+    SL = -0.01
 
     def __init__(self):
         self.client = Client(
@@ -157,13 +157,13 @@ class BinanceBot:
         # --- ADJUSTED SIGNAL LOGIC ---
         # Long signal: Williams %R indicates oversold, RSI indicates oversold, and volume confirms
         # Adjusted: Willr < -75 (from -85), RSI < 40 (from 38), Vol > Vol_MA * 1.02 (from 1.05)
-        if willr < -75 and rsi < 40 and vol > vol_ma * 1.02:
-            self._log(f"[신호 발생] 롱 (Willr:{willr:.2f} < -75, RSI:{rsi:.2f} < 40, Vol:{vol:.2f} > Vol_MA:{vol_ma:.2f}*1.02)")
+        if willr < -70 and rsi < 40 and vol > vol_ma * 1.02:
+            self._log(f"[신호 발생] 롱 (Willr:{willr:.2f} < -70, RSI:{rsi:.2f} < 40, Vol:{vol:.2f} > Vol_MA:{vol_ma:.2f}*1.02)")
             return 1
         # Short signal: Williams %R indicates overbought, RSI indicates overbought, and volume confirms
         # Adjusted: Willr > -25 (from -15), RSI > 60 (from 62), Vol > Vol_MA * 1.02 (from 1.05)
-        elif willr > -25 and rsi > 60 and vol > vol_ma * 1.02:
-            self._log(f"[신호 발생] 숏 (Willr:{willr:.2f} > -25, RSI:{rsi:.2f} > 60, Vol:{vol:.2f} > Vol_MA:{vol_ma:.2f}*1.02)")
+        elif willr > -30 and rsi > 60 and vol > vol_ma * 1.02:
+            self._log(f"[신호 발생] 숏 (Willr:{willr:.2f} > -30, RSI:{rsi:.2f} > 60, Vol:{vol:.2f} > Vol_MA:{vol_ma:.2f}*1.02)")
             return -1
         
         return 0
