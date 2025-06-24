@@ -9,15 +9,16 @@ import ta
 load_dotenv()
 
 class BinanceBot:
+    MIN_NOTIONAL = 100
     SYMBOL = "BTCUSDT"
     QTY_PRECISION = 3
     MIN_QTY = 0.001
     LEVERAGE = 125
-    MAX_POSITION_RATIO = 1.0  # 100% 사용
+    MAX_POSITION_RATIO = 0.95
     INIT_BALANCE = 50.0
 
-    TP = 0.04  # 4% 익절
-    SL = -0.02  # 2% 손절
+    TP = 0.04
+    SL = -0.02
 
     def __init__(self):
         self.TESTNET_URL = os.getenv("BINANCE_BASE_URL")
@@ -76,9 +77,13 @@ class BinanceBot:
 
     def _calc_qty(self, price):
         max_position = self.balance * self.max_position_ratio
-        raw_qty = max_position / price
+        invest = max_position
+        raw_qty = invest / price
         qty = max(round(raw_qty, self.qty_precision), self.min_qty)
-        return qty
+        return float(qty)
+
+    def _can_trade(self, price, qty):
+        return price * qty >= self.MIN_NOTIONAL and qty >= self.min_qty
 
     def _reset_position_state(self):
         self.position = 0
@@ -102,12 +107,21 @@ class BinanceBot:
         if np.isnan(willr) or np.isnan(rsi) or np.isnan(vol_ma):
             return 0
 
-        if (willr < -85) and (rsi < 38) and (vol > vol_ma * 1.10):
+        if (willr < -80) and (rsi < 43) and (vol > vol_ma * 1.05):
             return 1
-        elif (willr > -15) and (rsi > 62) and (vol > vol_ma * 1.10):
+        elif (willr > -20) and (rsi > 57) and (vol > vol_ma * 1.05):
             return -1
         else:
             return 0
+
+    def _log_position_status(self, cur_price):
+        if self.position == 0:
+            return
+        if self.last_qty > 0 and self.entry_price is not None:
+            pnl = ((cur_price - self.entry_price) if self.position == 1 else (self.entry_price - cur_price)) * self.last_qty
+            pnl_pct = ((cur_price - self.entry_price) / self.entry_price * 100) if self.position == 1 else ((self.entry_price - cur_price) / self.entry_price * 100)
+            msg = f"[포지션상태] {'LONG' if self.position == 1 else 'SHORT'} | 진입가 {self.entry_price:.2f} | 현가 {cur_price:.2f} | 수량 {self.last_qty:.4f} | 손익 {pnl_pct:.2f}% | 실손익 {pnl:.4f} USDT | 잔고 {self.balance:.2f}"
+            self._log(msg)
 
     def start(self):
         self.running = True
@@ -124,46 +138,57 @@ class BinanceBot:
             df['Vol_MA5'] = df['Volume'].rolling(5).mean()
 
             if np.any(pd.isnull(df[['Willr', 'RSI', 'Vol_MA5']].iloc[-1])):
-                status_msg = f"[대기] 신호 적용 불가 (NaN) 현가: ---"
+                status_msg = f"[대기] 신호 적용 불가 (데이터 부족/NaN) 현가: ---"
                 if status_msg != pre_status_msg:
                     self._log(status_msg)
                     pre_status_msg = status_msg
                 time.sleep(3)
                 continue
 
+            willr = float(df['Willr'].iloc[-1])
+            rsi = float(df['RSI'].iloc[-1])
+            vol = float(df['Volume'].iloc[-1])
+            vol_ma = float(df['Vol_MA5'].iloc[-1])
+
             current_price = self.get_realtime_price()
             if not current_price:
                 current_price = float(df['Close'].iloc[-1])
 
+            position_status = {1: "LONG", -1: "SHORT", 0: "NO POSITION"}
+            status_msg = (
+                f"[대기] {position_status[self.position]} | Willr={willr:.1f}, RSI={rsi:.1f}, "
+                f"Vol/MA5={vol:.2f}/{vol_ma:.2f} | 현가:{current_price:.2f}"
+            )
+            if status_msg != pre_status_msg:
+                self._log(status_msg)
+                pre_status_msg = status_msg
+
             entry_signal = self.check_entry_signal(df)
 
-            if entry_signal != 0 and (self.position == 0 or self.position != entry_signal):
+            if entry_signal != 0 and (self.position == 0 or (self.position != entry_signal)):
                 qty = self._calc_qty(current_price)
-                if self.position != 0:
-                    self._forcibly_close_position(current_price, self.last_qty)
-                    time.sleep(1)
-                self._enter_position("LONG" if entry_signal == 1 else "SHORT", current_price, qty)
-                self.entry_time = time.time()
-                self.position = entry_signal
-                self.last_qty = qty
-                self.entry_price = current_price
+                if self._can_trade(current_price, qty):
+                    if self.position != 0:
+                        self._forcibly_close_position(current_price, self.last_qty)
+                        time.sleep(1)
+                    self._enter_position("LONG" if entry_signal == 1 else "SHORT", current_price, qty)
+                    self.entry_time = time.time()
+                    self.position = entry_signal
+                    self.last_qty = qty
+                    self.entry_price = current_price
+                else:
+                    self._log(f"[진입불가] 최소 Notional 미만 (price*qty={current_price*qty:.2f} < {self.MIN_NOTIONAL})")
 
             if self.position != 0 and self.last_qty > 0 and self.entry_price is not None:
-                if self.position == 1:
-                    tp_hit = current_price >= self.entry_price * (1 + self.TP)
-                    sl_hit = current_price <= self.entry_price * (1 + self.SL)
-                elif self.position == -1:
-                    tp_hit = current_price <= self.entry_price * (1 - self.TP)
-                    sl_hit = current_price >= self.entry_price * (1 - self.SL)
-                else:
-                    tp_hit = sl_hit = False
+                pnl_pct = ((current_price - self.entry_price) / self.entry_price * 100) if self.position == 1 else ((self.entry_price - current_price) / self.entry_price * 100)
+                if pnl_pct >= self.TP * 100:
+                    self._log(f"[익절발동] {'LONG' if self.position==1 else 'SHORT'} | 진입가:{self.entry_price:.2f}, 현가:{current_price:.2f}")
+                    self._forcibly_close_position(current_price, self.last_qty)
+                elif pnl_pct <= self.SL * 100:
+                    self._log(f"[손절발동] {'LONG' if self.position==1 else 'SHORT'} | 진입가:{self.entry_price:.2f}, 현가:{current_price:.2f}")
+                    self._forcibly_close_position(current_price, self.last_qty)
 
-                if tp_hit:
-                    self._log(f"[익절] {'LONG' if self.position==1 else 'SHORT'} | 진입가:{self.entry_price:.2f}, 현가:{current_price:.2f}")
-                    self._forcibly_close_position(current_price, self.last_qty)
-                elif sl_hit:
-                    self._log(f"[손절] {'LONG' if self.position==1 else 'SHORT'} | 진입가:{self.entry_price:.2f}, 현가:{current_price:.2f}")
-                    self._forcibly_close_position(current_price, self.last_qty)
+            self._log_position_status(current_price)
 
             if self.balance <= 3.0:
                 self.running = False
@@ -171,15 +196,15 @@ class BinanceBot:
                 break
 
             time.sleep(5)
-        self._log("[종료] 봇 정지 완료")
+        self._log("[종료] 봇 정지 끝")
 
     def stop(self):
         self.running = False
-        self._log("[수동정지] 사용자 요청 봇 정지")
+        self._log("[수동정지] 사용자 요청 봇 중지")
 
     def _enter_position(self, side, price, qty):
         try:
-            order = self.client.futures_create_order(
+            self.client.futures_create_order(
                 symbol=self.symbol,
                 side="BUY" if side == "LONG" else "SELL",
                 type="MARKET",
@@ -188,7 +213,8 @@ class BinanceBot:
             self.position = 1 if side == "LONG" else -1
             self.entry_price = price
             self.last_qty = qty
-            self._log(f"[진입] {side} @ {price:.2f} / 수량: {qty:.4f}")
+            msg = f"[진입] {side} @ {price:.2f} / 수량: {qty:.4f}"
+            self._log(msg)
             self._log(f"잔고: {self.balance:.2f} USDT")
         except Exception as e:
             self._log(f"[진입실패] {side} @ {price:.2f}: {e}")
@@ -196,7 +222,7 @@ class BinanceBot:
     def _forcibly_close_position(self, price, qty):
         side = "SELL" if self.position == 1 else "BUY"
         try:
-            order = self.client.futures_create_order(
+            self.client.futures_create_order(
                 symbol=self.symbol,
                 side=side,
                 type="MARKET",
@@ -213,7 +239,7 @@ class BinanceBot:
         except Exception as e1:
             self._log(f"[청산실패] MARKET @ {price:.2f}: {e1}")
         try:
-            order = self.client.futures_create_order(
+            self.client.futures_create_order(
                 symbol=self.symbol,
                 side=side,
                 type="LIMIT",
