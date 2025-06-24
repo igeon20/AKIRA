@@ -1,8 +1,11 @@
-from fastapi import FastAPI, RequestAdd commentMore actions
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
-from bot import BinanceBot
 from threading import Thread
+
+# bot.py 파일에서 BinanceBot 클래스를 임포트합니다.
+# 이전에 api.py 파일 내부에 있던 BinanceBot 클래스 정의는 bot.py에만 있어야 합니다.
+from bot import BinanceBot 
 
 app = FastAPI()
 
@@ -19,6 +22,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# BinanceBot 인스턴스를 생성합니다.
+# 이 인스턴스는 bot.py 파일에 정의된 클래스를 사용합니다.
 bot = BinanceBot()
 
 # ✅ UptimeRobot, HEAD 대응용 루트 엔드포인트
