@@ -39,7 +39,7 @@ def ping(request: Request):
 @app.post("/bot/start")
 def start_bot():
     if not bot.running:
-        Thread(target=bot.start).start()
+        Thread(target=bot.start_bot).start()
         return {"message": "🚀 봇 시작됨"}
     return {"message": "⚠️ 봇 이미 실행중"}
 
