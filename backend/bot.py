@@ -12,7 +12,7 @@ class BinanceBot:
     MIN_NOTIONAL = 100
     SYMBOL = "BTCUSDT"
     QTY_PRECISION = 3
-    MIN_QTY = 0.001
+    MIN_QTY = 0.0047
     LEVERAGE = 125
     MAX_POSITION_RATIO = 0.95
     INIT_BALANCE = 50.0
