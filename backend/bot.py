@@ -14,11 +14,31 @@ class BinanceBot:
     PRICE_PRECISION = 2
     MIN_QTY = 0.001
     LEVERAGE = 125
-    INIT_BALANCE = 50.0
+    INIT_BALANCE = 50.0 # 초기 자산
 
-    # TP 값을 0.04 (4%)에서 0.03 (3%)로 조정하여 더 빠른 익절 유도
-    TP = 0.025 
-    SL = -0.008
+    # TP 값을 0.04 (4%)로, SL 값을 -0.02 (-2%)로 재설정
+    # 이 값들은 이제 투자 원금 대비 목표 수익률/손실률을 나타냅니다.
+    TP = 0.04  # 목표 4% 수익 (투자 원금 대비)
+    SL = -0.02 # 목표 2% 손실 (투자 원금 대비)
+
+    # AKIRA ASCII Art
+    AKIRA_ART = r"""
+⣿⣿⣿⣿⣿⣿⣿⡿⠛⠉⠉⠉⠉⠛⠻⣿⣿⠿⠛⠛⠙⠛⠻⣿⣿⣿⣿⣿⣿⣿
+⣿⣿⣿⣿⣿⠟⠁⠀⠀⠀⢀⣀⣀⡀⠀⠈⢄⠀⠀⠀⠀⠀⠀⠀⢻⣿⣿⣿⣿⣿
+⣿⣿⣿⣿⠏⠀⠀⠀⠔⠉⠁⠀⠀⠈⠉⠓⢼⡤⠔⠒⠀⠐⠒⠢⠌⠿⢿⣿⣿⣿
+⣿⣿⣿⡏⠀⠀⠀⠀⠀⠀⢀⠤⣒⠶⠤⠭⠭⢝⡢⣄⢤⣄⣒⡶⠶⣶⣢⡝⢿⣿
+⡿⠋⠁⠀⠀⠀⠀⣀⠲⠮⢕⣽⠖⢩⠉⠙⣷⣶⣮⡍⢉⣴⠆⣭⢉⠑⣶⣮⣅⢻
+⠀⠀⠀⠀⠀⠀⠀⠉⠒⠒⠻⣿⣄⠤⠘⢃⣿⣿⡿⠫⣿⣿⣄⠤⠘⢃⣿⣿⠿⣿
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠓⠤⠭⣥⣀⣉⡩⡥⠴⠃⠀⠈⠉⠁⠈⠉⠁⣴⣾⣿
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⠤⠔⠊⠀⠀⠀⠓⠲⡤⠤⠖⠐⢿⣿⣿⣿
+⠀⠀⠀⠀⠀⠀⠀⠀⣠⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢻⣿⣿
+⠀⠀⠀⠀⠀⠀⠀⢸⣿⡻⢷⣤⣀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣘⣿⣿
+⠀⠀⠀⠀⠀⠠⡀⠀⠙⢿⣷⣽⣽⣛⣟⣻⠷⠶⢶⣦⣤⣤⣤⣤⣶⠾⠟⣯⣿⣿
+⠀⠀⠀⠀⠀⠀⠉⠂⠀⠀⠀⠈⠉⠙⠛⠻⠿⠿⠿⠿⠶⠶⠶⠶⠾⣿⣟⣿⣿⣿
+⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣴⣿⣿⣿⣿⣿⣿
+⣿⣿⣶⣤⣀⣀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⣤⣟⢿⣿⣿⣿⣿⣿⣿⣿
+⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣶⣶⣶⣶⣶⣶⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
+    """
 
     def __init__(self):
         self.client = Client(
@@ -45,7 +65,7 @@ class BinanceBot:
 
         try:
             self.client.futures_change_leverage(symbol=self.symbol, leverage=self.leverage)
-            self._log(f"[설정] 🤖🤖 레버리지 {self.leverage}x 설정 완료.")
+            self._log(f"[설정] 🤖레버리지🤖 {self.leverage}x 설정 완료.")
         except Exception as e:
             self._log(f"[오류] 레버리지 설정 실패: {e}")
 
@@ -58,6 +78,7 @@ class BinanceBot:
     def start_bot(self):
         self.running = True
         self._log("[봇 시작] 트레이딩 루프 시작.")
+        self._log(self.AKIRA_ART) # 봇 시작 시 아스키 아트 출력
 
         while self.running:
             df = self.fetch_data()
@@ -154,16 +175,14 @@ class BinanceBot:
             self._log(f"[정보] 지표에 NaN 값 포함: Willr={willr:.2f}, RSI={rsi:.2f}, Vol_MA={vol_ma:.2f}. 신호 없음.")
             return 0
 
-        # --- ADJUSTED SIGNAL LOGIC ---
-        # Long signal: Williams %R indicates oversold, RSI indicates oversold, and volume confirms
-        # Adjusted: Willr < -83 (from -85), RSI < 39 (from 38), Vol > Vol_MA * 1.01 (from 1.05)
-        if willr < -83 and rsi < 39 and vol > vol_ma * 1.01:
-            self._log(f"[신호 발생] 롱 (Willr:{willr:.2f} < -83, RSI:{rsi:.2f} < 39, Vol:{vol:.2f} > Vol_MA:{vol_ma:.2f}*1.01)")
+        # --- 조정된 신호 로직 (사용자께서 지정해주신 값으로 업데이트) ---
+        # 롱 신호: Willr < -83, RSI < 39, Vol > Vol_MA * 1.02
+        if willr < -83 and rsi < 39 and vol > vol_ma * 1.02:
+            self._log(f"[신호 발생] 롱 📈📈 (Willr:{willr:.2f} < -83, RSI:{rsi:.2f} < 39, Vol:{vol:.2f} > Vol_MA:{vol_ma:.2f}*1.02)")
             return 1
-        # Short signal: Williams %R indicates overbought, RSI indicates overbought, and volume confirms
-        # Adjusted: Willr > -17 (from -15), RSI > 61 (from 62), Vol > Vol_MA * 1.01 (from 1.05)
-        elif willr > -17 and rsi > 61 and vol > vol_ma * 1.01:
-            self._log(f"[신호 발생] 숏 (Willr:{willr:.2f} > -17, RSI:{rsi:.2f} > 61, Vol:{vol:.2f} > Vol_MA:{vol_ma:.2f}*1.01)")
+        # 숏 신호: Willr > -17, RSI > 61, Vol > Vol_MA * 1.02
+        elif willr > -17 and rsi > 61 and vol > vol_ma * 1.02:
+            self._log(f"[신호 발생] 숏 📉📉 (Willr:{willr:.2f} > -17, RSI:{rsi:.2f} > 61, Vol:{vol:.2f} > Vol_MA:{vol_ma:.2f}*1.02)")
             return -1
         
         return 0
@@ -248,50 +267,36 @@ class BinanceBot:
         if self.position == 0 or current_price is None:
             return
 
-        # 현재 포지션 손익 계산
-        # 롱 포지션: (현재가 - 진입가) * 수량
-        # 숏 포지션: (진입가 - 현재가) * 수량
-        current_pnl = ((current_price - self.entry_price) if self.position == 1 else \
-                       (self.entry_price - current_price)) * self.last_qty
+        # 현재 포지션 미실현 손익 (USD 단위) 계산
+        current_pnl_usd = ((current_price - self.entry_price) if self.position == 1 else \
+                           (self.entry_price - current_price)) * self.last_qty
         
-        # 레버리지를 고려한 현재 예상 자산
-        # 초기 자산 + 미실현 손익
-        estimated_balance = self.balance + current_pnl
+        # 투자된 원금 (초기 마진) 계산
+        # Futures trading에서 실제 투자된 자본은 (진입 가격 * 수량) / 레버리지 입니다.
+        # 분모가 0이 되는 것을 방지
+        invested_capital = (self.entry_price * self.last_qty) / self.leverage if self.leverage != 0 else 0
+        
+        pnl_percentage = 0
+        if invested_capital > 0: # 0으로 나누는 것을 방지
+            pnl_percentage = (current_pnl_usd / invested_capital) # 소수점 형태 (예: 0.04 = 4%)
+        
+        # 레버리지를 고려한 현재 예상 총 자산 (실현 잔고 + 미실현 손익)
+        estimated_balance = self.balance + current_pnl_usd
 
-        if self.position == 1: # Long position
-            tp_price = self.entry_price * (1 + self.TP)
-            sl_price = self.entry_price * (1 + self.SL)
-            
-            # 포지션 유지 중 로그에 손익과 자산 정보 추가
-            self._log(
-                f"[포지션 관리] 롱 포지션 유지. "
-                f"진입: {self.entry_price:.{self.PRICE_PRECISION}f}, 현재: {current_price:.{self.PRICE_PRECISION}f}, "
-                f"TP: {tp_price:.{self.PRICE_PRECISION}f}, SL: {sl_price:.{self.PRICE_PRECISION}f}. "
-                f"예상 손익: {current_pnl:.4f} USDT, 예상 총 자산: {estimated_balance:.2f} USDT."
-            )
+        current_pos_type = "롱" if self.position == 1 else "숏"
 
-            if current_price >= tp_price:
-                self._log(f"[TP 도달] 📈📈 롱 포지션 청산 💰💰 (TP: {tp_price:.{self.PRICE_PRECISION}f}, 현재가: {current_price:.{self.PRICE_PRECISION}f})")
-                self.close_position(current_price, "TP 도달")
-            elif current_price <= sl_price:
-                self._log(f"[SL 도달] 롱 포지션 청산 💸💸 (SL: {sl_price:.{self.PRICE_PRECISION}f}, 현재가: {current_price:.{self.PRICE_PRECISION}f})")
-                self.close_position(current_price, "SL 도달")
+        # 포지션 유지 중 로그에 손익(USD), 수익률(%), 총 자산 정보 추가
+        self._log(
+            f"[포지션 관리] {current_pos_type} 포지션 유지. "
+            f"진입: {self.entry_price:.{self.PRICE_PRECISION}f}, 현재: {current_price:.{self.PRICE_PRECISION}f}. "
+            f"예상 손익: {current_pnl_usd:.4f} USDT, 예상 수익률: {pnl_percentage*100:.2f}%. "
+            f"예상 총 자산: {estimated_balance:.2f} USDT."
+        )
 
-        elif self.position == -1: # Short position
-            tp_price = self.entry_price * (1 - self.TP)
-            sl_price = self.entry_price * (1 - self.SL)
-
-            # 포지션 유지 중 로그에 손익과 자산 정보 추가
-            self._log(
-                f"[포지션 관리] 📉📉 숏 포지션 유지. "
-                f"진입: {self.entry_price:.{self.PRICE_PRECISION}f}, 현재: {current_price:.{self.PRICE_PRECISION}f}, "
-                f"TP: {tp_price:.{self.PRICE_PRECISION}f}, SL: {sl_price:.{self.PRICE_PRECISION}f}. "
-                f"예상 손익: {current_pnl:.4f} USDT, 예상 총 자산: {estimated_balance:.2f} USDT."
-            )
-
-            if current_price <= tp_price:
-                self._log(f"[TP 도달] 숏 포지션 청산 💰💰 (TP: {tp_price:.{self.PRICE_PRECISION}f}, 현재가: {current_price:.{self.PRICE_PRECISION}f})")
-                self.close_position(current_price, "TP 도달")
-            elif current_price >= sl_price:
-                self._log(f"[SL 도달] 숏 포지션 청산 💸💸 (SL: {sl_price:.{self.PRICE_PRECISION}f}, 현재가: {current_price:.{self.PRICE_PRECISION}f})")
-                self.close_position(current_price, "SL 도달")
+        # TP/SL 조건 체크 (손익률 기준)
+        if pnl_percentage >= self.TP:
+            self._log(f"[TP 도달] {current_pos_type} 포지션 청산 (목표 수익률: {self.TP*100:.2f}%, 현재 수익률: {pnl_percentage*100:.2f}%)")
+            self.close_position(current_price, "TP 도달 (수익률)")
+        elif pnl_percentage <= self.SL:
+            self._log(f"[SL 도달] {current_pos_type} 포지션 청산 (목표 손실률: {self.SL*100:.2f}%, 현재 손실률: {pnl_percentage*100:.2f}%)")
+            self.close_position(current_price, "SL 도달 (손실률)")
