@@ -17,8 +17,8 @@ class BinanceBot:
     INIT_BALANCE = 50.0
 
     # TP 값을 0.04 (4%)에서 0.03 (3%)로 조정하여 더 빠른 익절 유도
-    TP = 0.02 
-    SL = -0.01
+    TP = 0.025 
+    SL = -0.008
 
     def __init__(self):
         self.client = Client(
@@ -45,7 +45,7 @@ class BinanceBot:
 
         try:
             self.client.futures_change_leverage(symbol=self.symbol, leverage=self.leverage)
-            self._log(f"[설정] 레버리지 {self.leverage}x 설정 완료.")
+            self._log(f"[설정] 🤖🤖 레버리지 {self.leverage}x 설정 완료.")
         except Exception as e:
             self._log(f"[오류] 레버리지 설정 실패: {e}")
 
@@ -156,14 +156,14 @@ class BinanceBot:
 
         # --- ADJUSTED SIGNAL LOGIC ---
         # Long signal: Williams %R indicates oversold, RSI indicates oversold, and volume confirms
-        # Adjusted: Willr < -75 (from -85), RSI < 40 (from 38), Vol > Vol_MA * 1.02 (from 1.05)
-        if willr < -70 and rsi < 40 and vol > vol_ma * 1.02:
-            self._log(f"[신호 발생] 롱 (Willr:{willr:.2f} < -70, RSI:{rsi:.2f} < 40, Vol:{vol:.2f} > Vol_MA:{vol_ma:.2f}*1.02)")
+        # Adjusted: Willr < -85 (from -85), RSI < 40 (from 38), Vol > Vol_MA * 1.02 (from 1.05)
+        if willr < -85 and rsi < 38 and vol > vol_ma * 1.02:
+            self._log(f"[신호 발생] 롱 (Willr:{willr:.2f} < -85, RSI:{rsi:.2f} < 38, Vol:{vol:.2f} > Vol_MA:{vol_ma:.2f}*1.02)")
             return 1
         # Short signal: Williams %R indicates overbought, RSI indicates overbought, and volume confirms
         # Adjusted: Willr > -25 (from -15), RSI > 60 (from 62), Vol > Vol_MA * 1.02 (from 1.05)
-        elif willr > -30 and rsi > 60 and vol > vol_ma * 1.02:
-            self._log(f"[신호 발생] 숏 (Willr:{willr:.2f} > -30, RSI:{rsi:.2f} > 60, Vol:{vol:.2f} > Vol_MA:{vol_ma:.2f}*1.02)")
+        elif willr > -25 and rsi > 62 and vol > vol_ma * 1.02:
+            self._log(f"[신호 발생] 숏 (Willr:{willr:.2f} > -25, RSI:{rsi:.2f} > 62, Vol:{vol:.2f} > Vol_MA:{vol_ma:.2f}*1.02)")
             return -1
         
         return 0
@@ -271,10 +271,10 @@ class BinanceBot:
             )
 
             if current_price >= tp_price:
-                self._log(f"[TP 도달] 롱 포지션 청산 (TP: {tp_price:.{self.PRICE_PRECISION}f}, 현재가: {current_price:.{self.PRICE_PRECISION}f})")
+                self._log(f"[TP 도달] 📈📈 롱 포지션 청산 💰💰 (TP: {tp_price:.{self.PRICE_PRECISION}f}, 현재가: {current_price:.{self.PRICE_PRECISION}f})")
                 self.close_position(current_price, "TP 도달")
             elif current_price <= sl_price:
-                self._log(f"[SL 도달] 롱 포지션 청산 (SL: {sl_price:.{self.PRICE_PRECISION}f}, 현재가: {current_price:.{self.PRICE_PRECISION}f})")
+                self._log(f"[SL 도달] 롱 포지션 청산 💸💸 (SL: {sl_price:.{self.PRICE_PRECISION}f}, 현재가: {current_price:.{self.PRICE_PRECISION}f})")
                 self.close_position(current_price, "SL 도달")
 
         elif self.position == -1: # Short position
@@ -283,15 +283,15 @@ class BinanceBot:
 
             # 포지션 유지 중 로그에 손익과 자산 정보 추가
             self._log(
-                f"[포지션 관리] 숏 포지션 유지. "
+                f"[포지션 관리] 📉📉 숏 포지션 유지. "
                 f"진입: {self.entry_price:.{self.PRICE_PRECISION}f}, 현재: {current_price:.{self.PRICE_PRECISION}f}, "
                 f"TP: {tp_price:.{self.PRICE_PRECISION}f}, SL: {sl_price:.{self.PRICE_PRECISION}f}. "
                 f"예상 손익: {current_pnl:.4f} USDT, 예상 총 자산: {estimated_balance:.2f} USDT."
             )
 
             if current_price <= tp_price:
-                self._log(f"[TP 도달] 숏 포지션 청산 (TP: {tp_price:.{self.PRICE_PRECISION}f}, 현재가: {current_price:.{self.PRICE_PRECISION}f})")
+                self._log(f"[TP 도달] 숏 포지션 청산 💰💰 (TP: {tp_price:.{self.PRICE_PRECISION}f}, 현재가: {current_price:.{self.PRICE_PRECISION}f})")
                 self.close_position(current_price, "TP 도달")
             elif current_price >= sl_price:
-                self._log(f"[SL 도달] 숏 포지션 청산 (SL: {sl_price:.{self.PRICE_PRECISION}f}, 현재가: {current_price:.{self.PRICE_PRECISION}f})")
+                self._log(f"[SL 도달] 숏 포지션 청산 💸💸 (SL: {sl_price:.{self.PRICE_PRECISION}f}, 현재가: {current_price:.{self.PRICE_PRECISION}f})")
                 self.close_position(current_price, "SL 도달")
