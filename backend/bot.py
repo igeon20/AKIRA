@@ -217,11 +217,11 @@ class BinanceBot:
         # 롱 신호: Willr < -83, RSI < 38, Vol > Vol_MA * 1.03
         if willr < -83 and rsi < 38 and vol > vol_ma * 1.03:
             self._log(f"[신호 발생] 롱 📈📈 (Willr:{willr:.2f} < -83, RSI:{rsi:.2f} < 38, Vol:{vol:.2f} > Vol_MA:{vol_ma:.2f}*1.03)")
-            return 1
+            return -1
         # 숏 신호: Willr > -17, RSI > 62, Vol > Vol_MA * 1.03
         elif willr > -17 and rsi > 62 and vol > vol_ma * 1.03:
             self._log(f"[신호 발생] 숏 📉📉 (Willr:{willr:.2f} > -17, RSI:{rsi:.2f} > 62, Vol:{vol:.2f} > Vol_MA:{vol_ma:.2f}*1.03)")
-            return -1
+            return 1
         
         return 0
 
