@@ -133,7 +133,6 @@ class BinanceBot:
                 time.sleep(5)
                 continue
 
-            self._log(f"[상태] 신호: {signal}, 현재가: {current_price:.{self.PRICE_PRECISION}f}, 포지션: {self.position}")
 
             if signal == 1: # Long signal
                 if self.position <= 0:
@@ -161,8 +160,6 @@ class BinanceBot:
                         self._log(f"[진입 실패] 계산된 수량 ({qty})이 최소 수량 ({self.min_qty})보다 작습니다.")
                 else:
                     self._log("[정보] 숏 신호 발생, 이미 숏 포지션 중.")
-            else:
-                self._log("[정보] 신호 없음.")
 
             self.manage_position(current_price)
             time.sleep(5)
@@ -215,13 +212,13 @@ class BinanceBot:
 
         # --- 조정된 신호 로직 (사용자께서 지정해주신 값으로 업데이트) ---
         # 롱 신호: Willr < -83, RSI < 38, Vol > Vol_MA * 1.03
-        if willr < -83 and rsi < 38 and vol > vol_ma * 1.03:
-            self._log(f"[신호 발생] 롱 📈📈 (Willr:{willr:.2f} < -83, RSI:{rsi:.2f} < 38, Vol:{vol:.2f} > Vol_MA:{vol_ma:.2f}*1.03)")
-            return -1
-        # 숏 신호: Willr > -17, RSI > 62, Vol > Vol_MA * 1.03
-        elif willr > -17 and rsi > 62 and vol > vol_ma * 1.03:
-            self._log(f"[신호 발생] 숏 📉📉 (Willr:{willr:.2f} > -17, RSI:{rsi:.2f} > 62, Vol:{vol:.2f} > Vol_MA:{vol_ma:.2f}*1.03)")
+        if willr < -80 and rsi < 37 and vol > vol_ma * 1.04:
+            self._log(f"[신호 발생] 롱 📈📈 (Willr:{willr:.2f} < -80, RSI:{rsi:.2f} < 37, Vol:{vol:.2f} > Vol_MA:{vol_ma:.2f}*1.04)")
             return 1
+        # 숏 신호: Willr > -17, RSI > 62, Vol > Vol_MA * 1.03
+        elif willr > -20 and rsi > 63 and vol > vol_ma * 1.04:
+            self._log(f"[신호 발생] 숏 📉📉 (Willr:{willr:.2f} > -20, RSI:{rsi:.2f} > 63, Vol:{vol:.2f} > Vol_MA:{vol_ma:.2f}*1.04)")
+            return -1
         
         return 0
 
