@@ -18,8 +18,8 @@ class BinanceBot:
 
     # TP 값을 0.04 (4%)로, SL 값을 -0.02 (-2%)로 재설정
     # 이 값들은 이제 투자 원금 대비 목표 수익률/손실률을 나타냅니다.
-    TP = 0.04  # 목표 4% 수익 (투자 원금 대비)
-    SL = -0.015 # 목표 2% 손실 (투자 원금 대비)
+    TP = 0.03  # 목표 4% 수익 (투자 원금 대비)
+    SL = -0.009 # 목표 2% 손실 (투자 원금 대비)
 
     # AKIRA ASCII Art for bot start
     AKIRA_ART = r"""
@@ -212,12 +212,12 @@ class BinanceBot:
 
         # --- 조정된 신호 로직 (사용자께서 지정해주신 값으로 업데이트) ---
         # 롱 신호: Willr < -83, RSI < 38, Vol > Vol_MA * 1.03
-        if willr < -80 and rsi < 37 and vol > vol_ma * 1.04:
-            self._log(f"[신호 발생] 롱 📈📈 (Willr:{willr:.2f} < -80, RSI:{rsi:.2f} < 37, Vol:{vol:.2f} > Vol_MA:{vol_ma:.2f}*1.04)")
+        if willr < -85 and rsi < 37 and vol > vol_ma * 1.05:
+            self._log(f"[신호 발생] 롱 📈📈 (Willr:{willr:.2f} < -85, RSI:{rsi:.2f} < 37, Vol:{vol:.2f} > Vol_MA:{vol_ma:.2f}*1.05)")
             return 1
         # 숏 신호: Willr > -17, RSI > 62, Vol > Vol_MA * 1.03
-        elif willr > -20 and rsi > 63 and vol > vol_ma * 1.04:
-            self._log(f"[신호 발생] 숏 📉📉 (Willr:{willr:.2f} > -20, RSI:{rsi:.2f} > 63, Vol:{vol:.2f} > Vol_MA:{vol_ma:.2f}*1.04)")
+        elif willr > -15 and rsi > 63 and vol > vol_ma * 1.05:
+            self._log(f"[신호 발생] 숏 📉📉 (Willr:{willr:.2f} > -15, RSI:{rsi:.2f} > 63, Vol:{vol:.2f} > Vol_MA:{vol_ma:.2f}*1.05)")
             return -1
         
         return 0
