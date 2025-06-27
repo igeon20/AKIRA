@@ -1,7 +1,8 @@
-python-binance
 fastapi
 uvicorn[standard]
-python-dotenv
+joblib
 pandas
+scikit-learn
+python-dotenv
 ta
 numpy
