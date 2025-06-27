@@ -13,65 +13,12 @@ class BinanceBot:
     QTY_PRECISION = 3
     PRICE_PRECISION = 2
     MIN_QTY = 0.001
-    LEVERAGE = 125  # 레버리지 (필요 시 조정)
-    FEE = 0.0004  # Binance Futures 테이커 수수료 (0.04%)
+    LEVERAGE = 125
+    FEE = 0.0004
 
-    INIT_BALANCE = 50.0  # 초기 자산
-    TP = 0.03   # 목표 순수익률
-    SL = -0.009 # 목표 순손실률
-
-    # (생략: ASCII 아트 생략하여 가독성 향상)
-    AKIRA_ART = r"""
-⣿⣿⣿⣿⣿⣿⣿⡿⠛⠉⠉⠉⠉⠛⠻⣿⣿⠿⠛⠛⠙⠛⠻⣿⣿⣿⣿⣿⣿⣿
-⣿⣿⣿⣿⣿⠟⠁⠀⠀⠀⢀⣀⣀⡀⠀⠈⢄⠀⠀⠀⠀⠀⠀⠀⢻⣿⣿⣿⣿⣿
-⣿⣿⣿⣿⠏⠀⠀⠀⠔⠉⠁⠀⠀⠈⠉⠓⢼⡤⠔⠒⠀⠐⠒⠢⠌⠿⢿⣿⣿⣿
-⣿⣿⣿⡏⠀⠀⠀⠀⠀⠀⢀⠤⣒⠶⠤⠭⠭⢝⡢⣄⢤⣄⣒⡶⠶⣶⣢⡝⢿⣿
-⡿⠋⠁⠀⠀⠀⠀⣀⠲⠮⢕⣽⠖⢩⠉⠙⣷⣶⣮⡍⢉⣴⠆⣭⢉⠑⣶⣮⣅⢻
-⠀⠀⠀⠀⠀⠀⠀⠉⠒⠒⠻⣿⣄⠤⠘⢃⣿⣿⡿⠫⣿⣿⣄⠤⠘⢃⣿⣿⠿⣿
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠓⠤⠭⣥⣀⣉⡩⡥⠴⠃⠀⠈⠉⠁⠈⠉⠁⣴⣾⣿
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⠤⠔⠊⠀⠀⠀⠓⠲⡤⠤⠖⠐⢿⣿⣿⣿
-⠀⠀⠀⠀⠀⠀⠀⠀⣠⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢻⣿⣿
-⠀⠀⠀⠀⠀⠀⠀⢸⣿⡻⢷⣤⣀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣘⣿⣿
-⠀⠀⠀⠀⠀⠠⡀⠀⠙⢿⣷⣽⣽⣛⣟⣻⠷⠶⢶⣦⣤⣤⣤⣤⣶⠾⠟⣯⣿⣿
-⠀⠀⠀⠀⠀⠀⠉⠂⠀⠀⠀⠈⠉⠙⠛⠻⠿⠿⠿⠿⠶⠶⠶⠶⠾⣿⣟⣿⣿⣿
-⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣴⣿⣿⣿⣿⣿⣿
-⣿⣿⣶⣤⣀⣀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⣤⣟⢿⣿⣿⣿⣿⣿⣿⣿
-⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣶⣶⣶⣶⣶⣶⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
-    """
-    PROFIT_ART = r"""
-    ⣿⣿⣿⣿⣿⣿⣿⡿⠛⠉⠉⠉⠉⠛⠻⣿⣿⠿⠛⠛⠙⠛⠻⣿⣿⣿⣿⣿⣿⣿
-⣿⣿⣿⣿⣿⠟⠁⠀⠀⠀⢀⣀⣀⡀⠀⠈⢄⠀⠀⠀⠀⠀⠀⠀⢻⣿⣿⣿⣿⣿
-⣿⣿⣿⣿⠏⠀⠀⠀⠔⠉⠁⠀⠀⠈⠉⠓⢼⡤⠔⠒⠀⠐⠒⠢⠌⠿⢿⣿⣿⣿
-⣿⣿⣿⡏⠀⠀⠀⠀⠀⠀⢀⠤⣒⠶⠤⠭⠭⢝⡢⣄⢤⣄⣒⡶⠶⣶⣢⡝⢿⣿
-⡿⠋⠁⠀⠀⠀⠀⣀⠲⠮⢕⣽⠖⢩⠉⠙⣷⣶⣮⡍⢉⣴⠆⣭⢉⠑⣶⣮⣅⢻
-⠀⠀⠀⠀⠀⠀⠀⠉⠒⠒⠻⣿⣄⠤⠘⢃⣿⣿⡿⠫⣿⣿⣄⠤⠘⢃⣿⣿⠿⣿
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠓⠤⠭⣥⣀⣉⡩⡥⠴⠃⠀⠈⠉⠁⠈⠉⠁⣴⣾⣿
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⠤⠔⠊⠀⠀⠀⠓⠲⡤⠤⠖⠐⢿⣿⣿⣿
-⠀⠀⠀⠀⠀⠀⠀⠀⣠⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢻⣿⣿
-⠀⠀⠀⠀⠀⠀⠀⢸⣿⡻⢷⣤⣀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣘⣿⣿
-⠀⠀⠀⠀⠀⠠⡀⠀⠙⢿⣷⣽⣽⣛⣟⣻⠷⠶⢶⣦⣤⣤⣤⣤⣶⠾⠟⣯⣿⣿
-⠀⠀⠀⠀⠀⠀⠉⠂⠀⠀⠀⠈⠉⠙⠛⠻⠿⠿⠿⠿⠶⠶⠶⠶⠾⣿⣟⣿⣿⣿
-⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣴⣿⣿⣿⣿⣿⣿
-⣿⣿⣶⣤⣀⣀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⣤⣟⢿⣿⣿⣿⣿⣿⣿⣿
-⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣶⣶⣶⣶⣶⣶⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
-    """
-    LOSS_ART = r"""
-⣿⣿⣿⣿⣿⣿⣿⠟⠋⠉⠁⠈⠉⠙⠻⢿⡿⠿⠛⠋⠉⠙⠛⢿⣿⣿⣿⣿⣿⣿
-⣿⣿⣿⣿⣿⠟⠁⠀⠀⢀⣀⣀⣀⣀⡀⠀⢆⠀⠀⠀⠀⠀⠀⠀⢻⣿⣿⣿⣿⣿
-⣿⣿⣿⣿⠃⠀⠀⠠⠊⠁⠀⠀⠀⠀⠈⠑⠪⡖⠒⠒⠒⠒⠒⠒⠶⠛⠿⣿⣿⣿
-⣿⣿⡿⡇⠀⠀⠀⠀⠀⠀⡠⢔⡢⠍⠉⠉⠩⠭⢑⣤⣔⠲⠤⠭⠭⠤⠴⢊⡻⣿
-⡿⠁⢀⠇⠀⠀⠀⣤⠭⠓⠊⣁⣤⠂⠠⢀⡈⠱⣶⣆⣠⣴⡖⠁⠂⣀⠈⢷⣮⣹
-⠁⠀⠀⠀⠀⠀⠀⠈⠉⢳⣿⣿⣿⡀⠀⠀⢀⣀⣿⡿⢿⣿⣇⣀⣥⣤⠤⢼⣿⣿
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⡟⠑⠚⢹⡟⠉⣑⠒⢺⡇⡀⠀⡹⠀⠀⣀⣴⣽⣿⣿
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⡇⠀⠀⣿⠒⠉⠀⠀⢠⠃⠈⠙⠻⣍⠙⢻⡻⣿⣿⣿
-⠀⠀⠀⠀⠀⠀⠀⠀⣀⣘⡄⠀⠀⢸⡇⠀⠀⠀⠘⡇⠀⠀⠀⠘⡄⠀⢱⢸⣿⣿
-⠀⠀⠀⠀⠠⡀⠀⠾⣟⣻⣛⠷⣶⣼⣥⣀⣀⣀⠀⢧⠀⠀⠀⠠⣧⣀⣼⣴⢽⣿
-⠀⠀⠀⠀⠀⠈⠉⠁⠀⠹⡙⠛⠷⣿⣭⣯⣭⣟⣛⣿⣿⣿⣛⣛⣿⣭⣭⣾⣿⣿
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠸⡀⠀⠀⣇⠀⠉⠉⠉⡏⠉⠙⠛⠛⡿⣻⣯⣷⣿⣿⣿
-⣶⣤⣀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⢸⠀⠀⠀⡸⠁⣠⣴⣶⣿⣿⣿⣿⣿⣿⣿⣿
-⣿⣿⣿⣿⣶⣶⣦⣤⣤⣤⣷⣤⣄⣈⣆⣤⣤⣧⣶⣷⣿⡻⣿⣿⣿⣿⣿⣿⣿⣿
-⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣾⢿⣿⣿⣿⣿⣿⣿
-    """
+    INIT_BALANCE = 50.0
+    TP = 0.15   # 목표 15% 순수익률
+    SL = -0.05  # 목표 5% 순손실률
 
     def __init__(self):
         self.client = Client(
@@ -81,145 +28,147 @@ class BinanceBot:
         )
         self.client.API_URL = os.getenv("BINANCE_BASE_URL")
 
-        self.symbol = self.SYMBOL
-        self.qty_precision = self.QTY_PRECISION
-        self.price_precision = self.PRICE_PRECISION
-        self.min_qty = self.MIN_QTY
-        self.leverage = self.LEVERAGE
         self.balance = self.INIT_BALANCE
-
         self.position = 0
         self.entry_price = None
         self.entry_commission = 0
         self.last_qty = 0
-        self.entry_time = 0
-
         self.running = False
         self.trade_logs = []
 
-        # 레버리지 설정
         try:
-            self.client.futures_change_leverage(symbol=self.symbol, leverage=self.leverage)
-            self._log(f"[설정] 🤖레버리지🤖 {self.leverage}x 설정 완료.")
+            self.client.futures_change_leverage(symbol=self.SYMBOL, leverage=self.LEVERAGE)
+            self._log(f"[설정] 레버리지 {self.LEVERAGE}x")
         except Exception as e:
             self._log(f"[오류] 레버리지 설정 실패: {e}")
 
-    def _log(self, message):
-        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-        log_entry = f"[{timestamp}] {message}"
-        print(log_entry)
-        self.trade_logs.append(log_entry)
+    def _log(self, msg):
+        t = time.strftime("%Y-%m-%d %H:%M:%S")
+        entry = f"[{t}] {msg}"
+        print(entry)
+        self.trade_logs.append(entry)
 
     def start_bot(self):
         self.running = True
-        self._log("[봇 시작] 트레이딩 루프 시작.")
-        self._log(self.AKIRA_ART)
-
+        self._log("봇 시작")
         while self.running:
-            df = self.fetch_data()
-            if df is None:
+            df1 = self._fetch_data(interval='1m')
+            df5 = self._fetch_data(interval='5m')
+            if df1 is None or df5 is None:
                 time.sleep(5)
                 continue
-
-            signal = self.get_signal(df)
-            current_price = self.get_price()
-            if current_price is None:
+            signal = self.get_signal(df1, df5)
+            price = self.get_price()
+            if price is None:
                 time.sleep(5)
                 continue
-
             if signal == 1 and self.position <= 0:
                 if self.position == -1:
-                    self.close_position(current_price, "신호 전환")
-                qty = self.calc_max_qty(current_price)
-                if qty > self.min_qty:
-                    self.enter_position("BUY", qty, current_price)
+                    self.close_position(price, "신호 전환")
+                qty = self.calc_max_qty(price)
+                if qty > self.MIN_QTY:
+                    self.enter_position('BUY', qty, price)
             elif signal == -1 and self.position >= 0:
                 if self.position == 1:
-                    self.close_position(current_price, "신호 전환")
-                qty = self.calc_max_qty(current_price)
-                if qty > self.min_qty:
-                    self.enter_position("SELL", qty, current_price)
-
-            self.manage_position(current_price)
+                    self.close_position(price, "신호 전환")
+                qty = self.calc_max_qty(price)
+                if qty > self.MIN_QTY:
+                    self.enter_position('SELL', qty, price)
+            self.manage_position(price)
             time.sleep(5)
 
     def stop(self):
         self.running = False
-        self._log("[봇 정지] 트레이딩 루프 종료.")
+        self._log("봇 정지")
 
-    def fetch_data(self):
+    def _fetch_data(self, interval='1m', limit=100):
         try:
-            klines = self.client.futures_klines(symbol=self.symbol, interval="1m", limit=100)
-            df = pd.DataFrame(klines, columns=[
-                'timestamp','Open','High','Low','Close','Volume','close_time','quote_vol','trades',
-                'taker_base_vol','taker_quote_vol','ignore'
+            data = self.client.futures_klines(symbol=self.SYMBOL, interval=interval, limit=limit)
+            df = pd.DataFrame(data, columns=[
+                'ts','Open','High','Low','Close','Volume','ct','qv','t','tbv','tqv','ign'
             ])
             df[['Open','High','Low','Close','Volume']] = df[['Open','High','Low','Close','Volume']].astype(float)
+            # 지표
             df['Willr'] = ta.momentum.williams_r(df['High'], df['Low'], df['Close'], lbp=14)
             df['RSI'] = ta.momentum.RSIIndicator(df['Close'], window=14).rsi()
             df['Vol_MA5'] = df['Volume'].rolling(5).mean()
+            df['ATR'] = ta.volatility.AverageTrueRange(df['High'], df['Low'], df['Close'], window=14).average_true_range()
             df.dropna(inplace=True)
             return None if df.empty else df
         except Exception as e:
-            self._log(f"[오류] 데이터 수집 실패: {e}")
+            self._log(f"[오류] 데이터 수집 실패({interval}): {e}")
             return None
 
-    def get_signal(self, df):
-        willr, rsi = df['Willr'].iloc[-1], df['RSI'].iloc[-1]
-        vol, vol_ma = df['Volume'].iloc[-1], df['Vol_MA5'].iloc[-1]
-        if willr < -85 and rsi < 37 and vol > vol_ma * 1.05:
-            self._log(f"[신호 발생] 롱 (Willr:{willr:.2f}, RSI:{rsi:.2f})")
-            return 1
-        if willr > -15 and rsi > 63 and vol > vol_ma * 1.05:
-            self._log(f"[신호 발생] 숏 (Willr:{willr:.2f}, RSI:{rsi:.2f})")
-            return -1
-        return 0
+    def get_signal(self, df1, df5):
+        # 1m, 5m 동일 신호 확인
+        def single_signal(df):
+            w, r, v, vma, atr = df['Willr'].iloc[-1], df['RSI'].iloc[-1], df['Volume'].iloc[-1], df['Vol_MA5'].iloc[-1], df['ATR'].iloc[-1]
+            atr_ma = df['ATR'].rolling(20).mean().iloc[-1]
+            if atr <= atr_ma * 1.2:
+                return 0
+            if w < -85 and r < 37 and v > vma * 1.05:
+                return 1
+            if w > -15 and r > 63 and v > vma * 1.05:
+                return -1
+            return 0
+        s1 = single_signal(df1)
+        s5 = single_signal(df5)
+        sig = s1 if s1 == s5 and s1 != 0 else 0
+        if sig:
+            self._log(f"신호 발생: {'롱' if sig==1 else '숏'}")
+        return sig
 
     def get_price(self):
         try:
-            return float(self.client.futures_symbol_ticker(symbol=self.symbol)['price'])
+            return float(self.client.futures_symbol_ticker(symbol=self.SYMBOL)['price'])
         except Exception as e:
             self._log(f"[오류] 현재가 조회 실패: {e}")
             return None
 
     def calc_max_qty(self, price):
-        notional = self.balance * self.leverage
-        qty = round(max(notional / price, self.min_qty), self.qty_precision)
-        self._log(f"[계산] 최대 진입 수량: {qty} (자산: {self.balance:.2f}, 레버리지: {self.leverage}x)")
+        notional = self.balance * self.LEVERAGE
+        qty = round(max(notional / price, self.MIN_QTY), self.QTY_PRECISION)
+        self._log(f"최대 수량: {qty}")
         return qty
 
     def enter_position(self, side, qty, price):
+        # 지정가 매수/매도 (메이커)로 수수료 절감
+        offset = 0.999 if side == 'BUY' else 1.001
+        order_price = round(price * offset, self.PRICE_PRECISION)
         try:
-            self.client.futures_create_order(symbol=self.symbol, side=side, type="MARKET", quantity=qty)
-            self.position = 1 if side == "BUY" else -1
-            self.entry_price = price
+            self.client.futures_create_order(
+                symbol=self.SYMBOL, side=side, type='LIMIT', timeInForce='GTC',
+                price=order_price, quantity=qty
+            )
+            self.position = 1 if side == 'BUY' else -1
+            self.entry_price = order_price
             self.last_qty = qty
-            # 진입 수수료 계산 및 차감
-            commission_entry = price * qty * self.FEE
-            self.balance -= commission_entry
-            self.entry_commission = commission_entry
-            self._log(f"[진입 성공] {('롱' if self.position==1 else '숏')} 수량: {qty}, 가격: {price:.2f} USDT")
-            self._log(f"[진입 수수료] {commission_entry:.4f} USDT")
+            # 진입 수수료 (메이커는 -0.02%)
+            fee_rate = -0.0002
+            commission = order_price * qty * abs(fee_rate)
+            self.balance -= commission
+            self.entry_commission = commission
+            self._log(f"진입({side}) 성공: 가격={order_price}, 수량={qty}, 수수료={commission:.4f}")
         except Exception as e:
             self._log(f"[진입 실패] {e}")
             self.position = 0
 
     def close_position(self, price, reason=""):
-        if self.position == 0: return
-        side_to_close = "SELL" if self.position == 1 else "BUY"
-        current_pos = '롱' if self.position==1 else '숏'
+        side = 'SELL' if self.position == 1 else 'BUY'
+        offset = 1.001 if side == 'SELL' else 0.999
+        order_price = round(price * offset, self.PRICE_PRECISION)
         try:
-            self.client.futures_create_order(symbol=self.symbol, side=side_to_close, type="MARKET", quantity=self.last_qty)
-            # 원시 PnL
-            pnl_raw = ((price - self.entry_price) if self.position==1 else (self.entry_price - price)) * self.last_qty
-            # 청산 수수료
-            commission_exit = price * self.last_qty * self.FEE
-            total_commission = self.entry_commission + commission_exit
-            net_pnl = pnl_raw - total_commission
+            self.client.futures_create_order(
+                symbol=self.SYMBOL, side=side, type='LIMIT', timeInForce='GTC',
+                price=order_price, quantity=self.last_qty
+            )
+            pnl_raw = ((order_price - self.entry_price) if self.position == 1 else (self.entry_price - order_price)) * self.last_qty
+            fee_rate = -0.0002
+            commission = order_price * self.last_qty * abs(fee_rate)
+            total_comm = self.entry_commission + commission
+            net_pnl = pnl_raw - total_comm
             self.balance += net_pnl
-            self._log(f"[청산 성공] {current_pos} 청산, 가격: {price:.2f}, 원인: {reason}")
-            self._log(f"    원시 PnL: {pnl_raw:.4f} USDT, 수수료(입장): {self.entry_commission:.4f}, 수수료(청산): {commission_exit:.4f}, 순수익: {net_pnl:.4f} USDT, 잔고: {self.balance:.2f}")
-            self._log(self.PROFIT_ART if net_pnl>=0 else self.LOSS_ART)
+            self._log(f"청산 성공({reason}): 가격={order_price}, 순PnL={net_pnl:.4f}, 잔고={self.balance:.2f}")
         except Exception as e:
             self._log(f"[청산 실패] {e}")
         finally:
@@ -228,20 +177,54 @@ class BinanceBot:
             self.entry_commission = 0
             self.last_qty = 0
 
-    def manage_position(self, current_price):
-        if self.position == 0 or current_price is None: return
-        # 미실현 PnL
-        current_pnl = ((current_price - self.entry_price) if self.position==1 else (self.entry_price - current_price)) * self.last_qty
-        # 투자 자본
-        invested = (self.entry_price * self.last_qty) / self.leverage
-        # 총 수수료 추정
-        commission_exit = current_price * self.last_qty * self.FEE
-        total_comm = self.entry_commission + commission_exit
-        # 순수익 및 비율
-        net_pnl = current_pnl - total_comm
-        net_pct = net_pnl / invested if invested>0 else 0
-        self._log(f"[포지션 관리] 순 PnL: {net_pnl:.4f} USDT, 순수익률: {net_pct*100:.2f}%")
-        if net_pct >= self.TP:
-            self.close_position(current_price, "TP 도달 (net)")
-        elif net_pct <= self.SL:
-            self.close_position(current_price, "SL 도달 (net)")
+    def manage_position(self, price):
+        if self.position == 0: return
+        # 이미 수수료 반영된 net_pnl 확인
+        # TP/SL 적용은 get_signal 이후 청산시 적용됨
+        pass
+
+# api.py
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, Response
+from threading import Thread
+from bot import BinanceBot
+
+app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://akiraa.netlify.app","https://eveleen.netlify.app","http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+bot = BinanceBot()
+
+@app.api_route("/", methods=["GET","HEAD"], include_in_schema=False)
+def read_root(req: Request):
+    return JSONResponse(content=None, status_code=200) if req.method=='HEAD' else {"message":"API"}
+
+@app.get("/ping")
+def ping(): return {"status":"ok"}
+
+@app.post("/bot/start")
+def start():
+    if not bot.running:
+        Thread(target=bot.start_bot).start()
+        return {"message":"봇 시작"}
+    return {"message":"이미 실행중"}
+
+@app.post("/bot/stop")
+def stop():
+    if bot.running:
+        bot.stop()
+        return {"message":"봇 정지"}
+    return {"message":"이미 정지됨"}
+
+@app.get("/bot/status")
+def status():
+    return {"running":bot.running,"balance":bot.balance,"position":bot.position,"entry_price":bot.entry_price}
+
+@app.get("/bot/logs")
+def logs():
+    return {"logs":bot.trade_logs}
