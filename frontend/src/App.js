@@ -16,7 +16,11 @@ function App() {
       axios.get(`${API_BASE_URL}/bot/status`).then(res => setBalance(res.data.balance));
     };
     fetchBalance();
+<<<<<<< HEAD
     const interval = setInterval(fetchBalance, 5000);
+=======
+    const interval = setInterval(fetchBalance, 5000); // 5초마다 실시간 반영
+>>>>>>> 54a2c49a8d4d5f2cd4a5bdc02c2cb8b34832ceb0
     return () => clearInterval(interval);
   }, []);
 
