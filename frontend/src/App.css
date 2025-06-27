@@ -1,7 +1,82 @@
-body {
-  background: #181b20 !important;
-  color: #ececec;
+html, body, #root {
   min-height: 100vh;
+  height: 100%;
   margin: 0;
+  padding: 0;
+  background: #181b20 !important;
+  color: #ececec !important;
   font-family: 'Pretendard', 'Noto Sans KR', sans-serif;
+  transition: background 0.25s;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* 스크롤바도 다크 */
+::-webkit-scrollbar {
+  width: 8px;
+  background: #23242a;
+}
+::-webkit-scrollbar-thumb {
+  background: #32343c;
+  border-radius: 4px;
+}
+
+/* input, textarea, select 등도 다크 */
+input, textarea, select, button {
+  background: #22242a;
+  color: #ececec;
+  border: 1px solid #31343a;
+  border-radius: 6px;
+  outline: none;
+}
+
+button {
+  cursor: pointer;
+  transition: background 0.2s;
+}
+button:hover {
+  background: #31343a;
+}
+
+/* 링크(필요 시) */
+a {
+  color: #93b7ff;
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+/* Card나 기타 컴포넌트 공통 배경 예시 */
+.card, .container, .panel, .log-panel {
+  background: #23242a;
+  color: #ececec;
+  border-radius: 18px;
+  padding: 24px;
+  box-shadow: 0 6px 30px #0003;
+}
+
+/* 헤더, 푸터 */
+header, footer {
+  background: #1c1e23;
+  color: #ececec;
+  padding: 16px;
+}
+
+/* h1~h6 */
+h1, h2, h3, h4, h5, h6 {
+  color: #ececec;
+}
+
+/* 로그 영역 기본(TradeLogs.js에서 style로도 적용해도 되지만, class 사용 권장) */
+.log-panel {
+  background: #222631;
+  color: #f7f7f7;
+  border-radius: 0 0 16px 16px;
+  font-size: 16px;
+  height: 300px;
+  overflow-y: auto;
+  padding: 20px;
 }
