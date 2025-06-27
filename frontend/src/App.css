@@ -1,82 +1,69 @@
-html, body, #root {
-  min-height: 100vh;
-  height: 100%;
-  margin: 0;
-  padding: 0;
+html, body, #root, .app-root {
   background: #181b20 !important;
   color: #ececec !important;
-  font-family: 'Pretendard', 'Noto Sans KR', sans-serif;
-  transition: background 0.25s;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+  font-family: 'Pretendard', 'Noto Sans KR', 'Segoe UI', Arial, sans-serif;
 }
 
-* {
-  box-sizing: border-box;
+.app-root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #181b20;
 }
 
-/* 스크롤바도 다크 */
+header {
+  width: 100%;
+  padding: 30px 0 0 0;
+  background: #181b20;
+}
+
+header h1 {
+  font-size: 38px;
+  color: #ececec;
+  text-align: left;
+  margin: 0 0 16px 40px;
+  font-weight: 800;
+}
+
+main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: #181b20;
+}
+
+.chart-section {
+  width: 100%;
+  max-width: 1000px;
+  margin: 30px auto 0 auto;
+  background: #181b20;
+}
+
+.balance-section, .bot-control-section, .logs-section {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  background: transparent;
+  margin-top: 24px;
+}
+
+@media (max-width: 1100px) {
+  .chart-section {
+    width: 100vw;
+    max-width: 100vw;
+    padding: 0 10px;
+  }
+}
+
 ::-webkit-scrollbar {
-  width: 8px;
   background: #23242a;
+  width: 10px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #32343c;
-  border-radius: 4px;
-}
-
-/* input, textarea, select 등도 다크 */
-input, textarea, select, button {
-  background: #22242a;
-  color: #ececec;
-  border: 1px solid #31343a;
-  border-radius: 6px;
-  outline: none;
-}
-
-button {
-  cursor: pointer;
-  transition: background 0.2s;
-}
-button:hover {
-  background: #31343a;
-}
-
-/* 링크(필요 시) */
-a {
-  color: #93b7ff;
-  text-decoration: none;
-}
-a:hover {
-  text-decoration: underline;
-}
-
-/* Card나 기타 컴포넌트 공통 배경 예시 */
-.card, .container, .panel, .log-panel {
-  background: #23242a;
-  color: #ececec;
-  border-radius: 18px;
-  padding: 24px;
-  box-shadow: 0 6px 30px #0003;
-}
-
-/* 헤더, 푸터 */
-header, footer {
-  background: #1c1e23;
-  color: #ececec;
-  padding: 16px;
-}
-
-/* h1~h6 */
-h1, h2, h3, h4, h5, h6 {
-  color: #ececec;
-}
-
-/* 로그 영역 기본(TradeLogs.js에서 style로도 적용해도 되지만, class 사용 권장) */
-.log-panel {
-  background: #222631;
-  color: #f7f7f7;
-  border-radius: 0 0 16px 16px;
-  font-size: 16px;
-  height: 300px;
-  overflow-y: auto;
-  padding: 20px;
+  background: #444a56;
+  border-radius: 8px;
 }
