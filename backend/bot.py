@@ -28,6 +28,7 @@ class BinanceBot:
         )
         self.client.API_URL = os.getenv("BINANCE_BASE_URL")
 
+        self.leverage = self.LEVERAGE
         self.balance = self.INIT_BALANCE
         self.position = 0
         self.entry_price = None
