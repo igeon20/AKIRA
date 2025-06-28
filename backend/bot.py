@@ -5,6 +5,8 @@ from binance.client import Client
 import pandas as pd
 import numpy as np
 import ta
+import joblib
+import json
 
 load_dotenv()
 
@@ -19,6 +21,10 @@ class BinanceBot:
     INIT_BALANCE = 50.0
     TP = 0.15   # 목표 15% 순수익률
     SL = -0.05  # 목표 5% 순손실률
+
+    # === AI 모델, feature config 경로 ===
+    AI_MODEL_PATH = os.path.join("ai_model", "ai_model.pkl")
+    FEATURE_CONFIG_PATH = os.path.join("ai_model", "feature_config.json")
 
     def __init__(self):
         self.client = Client(
@@ -37,6 +43,16 @@ class BinanceBot:
         self.running = False
         self.trade_logs = []
 
+        # === AI 모델 로딩 ===
+        self.ai_model, self.feature_cols = None, []
+        try:
+            self.ai_model = joblib.load(self.AI_MODEL_PATH)
+            with open(self.FEATURE_CONFIG_PATH) as f:
+                self.feature_cols = json.load(f)
+            self._log("[AI] 모델 및 feature config 로딩 성공")
+        except Exception as e:
+            self._log(f"[AI] 모델 로딩 실패: {e}")
+
         try:
             self.client.futures_change_leverage(symbol=self.SYMBOL, leverage=self.LEVERAGE)
             self._log(f"[설정] 레버리지 {self.LEVERAGE}x")
@@ -49,6 +65,20 @@ class BinanceBot:
         print(entry)
         self.trade_logs.append(entry)
 
+    def predict_ai_signal(self, last_row):
+        if self.ai_model is None or not self.feature_cols:
+            self._log("[AI] 모델/피처 미적용")
+            return 0
+        try:
+            # DataFrame row → 2D 배열
+            X = last_row[self.feature_cols].values.reshape(1, -1)
+            pred = int(self.ai_model.predict(X)[0])
+            self._log(f"[AI] 예측 신호: {pred}")
+            return pred
+        except Exception as e:
+            self._log(f"[AI] 예측 오류: {e}")
+            return 0
+
     def start_bot(self):
         self.running = True
         self._log("봇 시작")
@@ -58,7 +88,20 @@ class BinanceBot:
             if df1 is None or df5 is None:
                 time.sleep(5)
                 continue
-            signal = self.get_signal(df1, df5)
+
+            # 1. 기존 지표 신호
+            indicator_signal = self.get_signal(df1, df5)
+
+            # 2. AI 신호 (가장 최근 1분봉)
+            ai_signal = self.predict_ai_signal(df1.iloc[-1]) if len(df1) > 0 else 0
+
+            # 3. 결합 신호: 방향 같을 때만 진입
+            signal = indicator_signal if (indicator_signal == ai_signal and indicator_signal != 0) else 0
+            if signal:
+                self._log(f"[COMBO] 지표={indicator_signal}, AI={ai_signal} → {'롱' if signal==1 else '숏'} 신호 발생")
+            else:
+                self._log(f"[COMBO] 지표={indicator_signal}, AI={ai_signal} → 신호 불일치/관망")
+
             price = self.get_price()
             if price is None:
                 time.sleep(5)
@@ -95,6 +138,8 @@ class BinanceBot:
             df['Vol_MA5'] = df['Volume'].rolling(5).mean()
             df['ATR'] = ta.volatility.AverageTrueRange(df['High'], df['Low'], df['Close'], window=14).average_true_range()
             df.dropna(inplace=True)
+            # 컬럼명도 소문자 통일 (AI용)
+            df.columns = [c.lower() for c in df.columns]
             return None if df.empty else df
         except Exception as e:
             self._log(f"[오류] 데이터 수집 실패({interval}): {e}")
@@ -103,8 +148,8 @@ class BinanceBot:
     def get_signal(self, df1, df5):
         # 1m, 5m 동일 신호 확인
         def single_signal(df):
-            w, r, v, vma, atr = df['Willr'].iloc[-1], df['RSI'].iloc[-1], df['Volume'].iloc[-1], df['Vol_MA5'].iloc[-1], df['ATR'].iloc[-1]
-            atr_ma = df['ATR'].rolling(20).mean().iloc[-1]
+            w, r, v, vma, atr = df['willr'].iloc[-1], df['rsi'].iloc[-1], df['volume'].iloc[-1], df['vol_ma5'].iloc[-1], df['atr'].iloc[-1]
+            atr_ma = df['atr'].rolling(20).mean().iloc[-1]
             if atr <= atr_ma * 1.2:
                 return 0
             if w < -80 and r < 40 and v > vma * 1.03:
@@ -116,7 +161,7 @@ class BinanceBot:
         s5 = single_signal(df5)
         sig = s1 if s1 == s5 and s1 != 0 else 0
         if sig:
-            self._log(f"신호 발생: {'롱' if sig==1 else '숏'}")
+            self._log(f"[지표] 신호 발생: {'롱' if sig==1 else '숏'}")
         return sig
 
     def get_price(self):
@@ -183,3 +228,4 @@ class BinanceBot:
         # 이미 수수료 반영된 net_pnl 확인
         # TP/SL 적용은 get_signal 이후 청산시 적용됨
         pass
+
