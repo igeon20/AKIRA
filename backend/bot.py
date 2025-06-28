@@ -152,9 +152,9 @@ class BinanceBot:
             atr_ma = df['atr'].rolling(20).mean().iloc[-1]
             if atr <= atr_ma * 1.2:
                 return 0
-            if w < -80 and r < 40 and v > vma * 1.03:
+            if w < -83 and r < 43 and v > vma * 1.01:
                 return 1
-            if w > -20 and r > 60 and v > vma * 1.03:
+            if w > -17 and r > 57 and v > vma * 1.01:
                 return -1
             return 0
         s1 = single_signal(df1)
