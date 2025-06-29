@@ -1,3 +1,4 @@
+// App.js
 import React, { useEffect, useState } from 'react';
 import BotControl from './components/BotControl';
 import { AdvancedChart } from 'react-tradingview-embed';
@@ -8,6 +9,23 @@ import './App.css';  // 다크모드 전역 스타일 (꼭 import!)
 
 const API_BASE_URL = process.env.REACT_APP_API_URL;
 const INIT_BALANCE = 50.0;
+
+// 기어 애니메이션 컴포넌트 추가
+function GearSpinner() {
+  return (
+    <div className="gear-spinner">
+      <div className="gear">
+        <div className="tooth tooth1"></div>
+        <div className="tooth tooth2"></div>
+        <div className="tooth tooth3"></div>
+        <div className="tooth tooth4"></div>
+        <div className="tooth tooth5"></div>
+        <div className="tooth tooth6"></div>
+        <div className="center"></div>
+      </div>
+    </div>
+  );
+}
 
 function App() {
   const [balance, setBalance] = useState(INIT_BALANCE);
@@ -36,6 +54,9 @@ function App() {
         </h1>
       </header>
       <main>
+        {/* 여기 기어 애니메이션 추가 */}
+        <GearSpinner />
+
         <section className="chart-section">
           <AdvancedChart
             widgetProps={{
