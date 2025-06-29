@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import BotStatus from './components/BotStatus';
+import BotStatus from './BotStatus';
 import { AdvancedChart } from 'react-tradingview-embed';
-import TradeLogs from './components/TradeLogs';
-import BalanceStatus from './components/BalanceStatus';
-import BotControl from './components/BotControl';
-import './App.css';
+import TradeLogs from './TradeLogs';
+import BalanceStatus from './BalanceStatus';
+import BotControl from './BotControl';
+import '../App.css';
 
 const INIT_BALANCE = 50.0;
 
@@ -26,21 +26,6 @@ function App() {
         </h1>
       </header>
       <main style={{ padding: '0 20px' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 40 }}>
-          {/* 봇 상태 및 기어 */}
-          <BotStatus isRunning={isRunning} />
-
-          {/* 봇 제어 버튼 */}
-          <div style={{ display: 'flex', gap: 16, justifyContent: 'center', marginTop: 24 }}>
-            <button onClick={() => setIsRunning(true)} style={{ padding: '10px 24px', fontSize: 18, borderRadius: 10, border: 'none', background: '#2d333b', color: '#fff', cursor: 'pointer' }}>
-              Start ▶️
-            </button>
-            <button onClick={() => setIsRunning(false)} style={{ padding: '10px 24px', fontSize: 18, borderRadius: 10, border: 'none', background: '#555', color: '#fff', cursor: 'pointer' }}>
-              Stop ⏹️
-            </button>
-          </div>
-        </div>
-
         <section className="chart-section">
           <AdvancedChart
             widgetProps={{
@@ -58,9 +43,10 @@ function App() {
           <BalanceStatus initBalance={INIT_BALANCE} balance={balance} />
         </section>
 
-        <section className="bot-control-section">
-          <BotControl />
-        </section>
+        {/* 이 위치에만 봇 상태(기어, 버튼, 텍스트) */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 32, marginTop: 10 }}>
+          <BotStatus isRunning={isRunning} setIsRunning={setIsRunning} />
+        </div>
 
         <section className="logs-section">
           <TradeLogs />
