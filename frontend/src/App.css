@@ -60,7 +60,6 @@ main {
   }
 }
 
-/* 스크롤바 */
 ::-webkit-scrollbar {
   background: #23242a;
   width: 10px;
