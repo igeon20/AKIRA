@@ -3,15 +3,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from threading import Thread
 from bot import BinanceBot
-
-# AI 모델 관련
 import joblib
 import json
 import pandas as pd
 import os
 
 app = FastAPI()
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -26,11 +23,10 @@ app.add_middleware(
 
 bot = BinanceBot()
 
-# === AI 모델, feature config 로딩 ===
+# 모델 로드
 AI_MODEL_PATH = os.path.join("ai_model", "ai_model.pkl")
 FEATURE_CONFIG_PATH = os.path.join("ai_model", "feature_config.json")
 DATA_PATH = os.path.join("data", "minute_ohlcv.csv")
-
 if os.path.exists(AI_MODEL_PATH) and os.path.exists(FEATURE_CONFIG_PATH):
     AI_MODEL = joblib.load(AI_MODEL_PATH)
     with open(FEATURE_CONFIG_PATH) as f:
@@ -40,26 +36,22 @@ else:
     FEATURE_COLS = []
 
 @app.api_route("/", methods=["GET","HEAD"], include_in_schema=False)
-def read_root(request: Request):
-    if request.method == "HEAD":
-        return JSONResponse(content=None, status_code=200)
-    return {"message": "Binance Trading Bot API"}
+def read_root(req: Request):
+    if req.method == 'HEAD': return JSONResponse(content=None, status_code=200)
+    return {"message":"API"}
 
-@app.api_route("/ping", methods=["GET","HEAD"])
-def ping(request: Request):
-    if request.method=="HEAD":
-        return Response(status_code=204)
-    return {"status":"ok"}
+@app.get("/ping")
+def ping(): return {"status":"ok"}
 
 @app.post("/bot/start")
-def start_bot():
+def start():
     if not bot.running:
         Thread(target=bot.start_bot).start()
         return {"message":"🚀 봇 시작됨"}
     return {"message":"⚠️ 봇 이미 실행중"}
 
 @app.post("/bot/stop")
-def stop_bot():
+def stop():
     if bot.running:
         bot.stop()
         return {"message":"🛑 봇 정지됨"}
@@ -72,14 +64,13 @@ def bot_status():
         "balance": bot.balance,
         "position": bot.position,
         "entry_price": bot.entry_price,
-        "leverage": getattr(bot, "leverage", None)
+        "leverage": getattr(bot, 'leverage', None)
     }
 
 @app.get("/bot/logs")
 def get_logs():
     return {"logs": bot.trade_logs}
 
-# === AI 신호 API ===
 @app.get("/bot/ai_signal")
 def ai_signal():
     if AI_MODEL is None or not FEATURE_COLS:
