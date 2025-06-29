@@ -1,150 +1,73 @@
-/* ===== 기본 다크모드 배경 및 기본 스타일 ===== */
-html, body, #root, .app-root {
-  background: #181b20 !important;
-  color: #ececec !important;
-  min-height: 100vh;
-  margin: 0;
-  padding: 0;
-  font-family: 'Pretendard', 'Noto Sans KR', 'Segoe UI', Arial, sans-serif;
+import React, { useState } from 'react';
+import BotStatus from './components/BotStatus';
+import { AdvancedChart } from 'react-tradingview-embed';
+import TradeLogs from './components/TradeLogs';
+import BalanceStatus from './components/BalanceStatus';
+import BotControl from './components/BotControl';
+import './App.css';
+
+const INIT_BALANCE = 50.0;
+
+function App() {
+  const [balance, setBalance] = useState(INIT_BALANCE);
+  const [isRunning, setIsRunning] = useState(true);
+
+  return (
+    <div className="app-root">
+      <header>
+        <h1 style={{
+          textAlign: 'center',
+          padding: 30,
+          margin: 0,
+          fontSize: 38,
+          color: '#ececec'
+        }}>
+          🚀 EVEELEN TRADE BOT 🚀
+        </h1>
+      </header>
+      <main style={{ padding: '0 20px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 40 }}>
+          {/* 봇 상태 및 기어 */}
+          <BotStatus isRunning={isRunning} />
+
+          {/* 봇 제어 버튼 */}
+          <div style={{ display: 'flex', gap: 16, justifyContent: 'center', marginTop: 24 }}>
+            <button onClick={() => setIsRunning(true)} style={{ padding: '10px 24px', fontSize: 18, borderRadius: 10, border: 'none', background: '#2d333b', color: '#fff', cursor: 'pointer' }}>
+              Start ▶️
+            </button>
+            <button onClick={() => setIsRunning(false)} style={{ padding: '10px 24px', fontSize: 18, borderRadius: 10, border: 'none', background: '#555', color: '#fff', cursor: 'pointer' }}>
+              Stop ⏹️
+            </button>
+          </div>
+        </div>
+
+        <section className="chart-section">
+          <AdvancedChart
+            widgetProps={{
+              symbol: "BINANCE:BTCUSDT",
+              interval: "1",
+              timezone: "Asia/Seoul",
+              theme: "dark",
+              width: "1000",
+              height: "480"
+            }}
+          />
+        </section>
+
+        <section className="balance-section">
+          <BalanceStatus initBalance={INIT_BALANCE} balance={balance} />
+        </section>
+
+        <section className="bot-control-section">
+          <BotControl />
+        </section>
+
+        <section className="logs-section">
+          <TradeLogs />
+        </section>
+      </main>
+    </div>
+  );
 }
 
-.app-root {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  background: #181b20;
-}
-
-header {
-  width: 100%;
-  padding: 30px 0 0 0;
-  background: #181b20;
-}
-
-header h1 {
-  font-size: 38px;
-  color: #ececec;
-  text-align: left;
-  margin: 0 0 16px 40px;
-  font-weight: 800;
-}
-
-main {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  background: #181b20;
-  padding: 0 20px;
-}
-
-.chart-section {
-  width: 100%;
-  max-width: 1000px;
-  margin: 30px auto 0 auto;
-  background: #181b20;
-}
-
-.balance-section, .bot-control-section, .logs-section {
-  width: 100%;
-  display: flex;
-  justify-content: center;
-  background: transparent;
-  margin-top: 24px;
-}
-
-@media (max-width: 1100px) {
-  .chart-section {
-    width: 100vw;
-    max-width: 100vw;
-    padding: 0 10px;
-  }
-}
-
-/* 스크롤바 스타일 */
-::-webkit-scrollbar {
-  background: #23242a;
-  width: 10px;
-}
-::-webkit-scrollbar-thumb {
-  background: #444a56;
-  border-radius: 8px;
-}
-
-/* ===== BotStatus 컴포넌트 스타일 ===== */
-.bot-status {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  color: #ccc;
-  font-weight: 600;
-  font-size: 18px;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  margin-bottom: 20px;
-  user-select: none;
-}
-
-/* 기어 컨테이너 */
-.gears {
-  display: flex;
-  position: relative;
-  width: 80px;
-  height: 40px;
-}
-
-/* 기어 기본 스타일 */
-.gear {
-  position: absolute;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: radial-gradient(circle at center, #aaa 0%, #666 70%);
-  box-shadow:
-    inset 0 0 6px #999,
-    0 0 8px #444;
-  border: 2px solid #555;
-  background-image:
-    radial-gradient(circle at center, #aaa 0%, #666 70%),
-    repeating-conic-gradient(#555 0deg 10deg, transparent 10deg 20deg);
-  background-blend-mode: multiply;
-  cursor: default;
-}
-
-/* 각 기어 위치 및 크기 */
-.gear1 {
-  top: 2px;
-  left: 0;
-  animation: spin-clockwise 3s linear infinite;
-}
-
-.gear2 {
-  top: 0;
-  left: 32px;
-  width: 24px;
-  height: 24px;
-  animation: spin-counterclockwise 2.2s linear infinite;
-}
-
-.gear3 {
-  top: 16px;
-  left: 48px;
-  width: 24px;
-  height: 24px;
-  animation: spin-clockwise 2.8s linear infinite;
-}
-
-/* 애니메이션 정의 */
-@keyframes spin-clockwise {
-  from { transform: rotate(0deg);}
-  to { transform: rotate(360deg);}
-}
-
-@keyframes spin-counterclockwise {
-  from { transform: rotate(0deg);}
-  to { transform: rotate(-360deg);}
-}
-
-/* 봇 정지시 애니메이션 멈춤 */
-.gears.stopped .gear {
-  animation-play-state: paused !important;
-}
+export default App;
