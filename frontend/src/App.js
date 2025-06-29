@@ -4,7 +4,7 @@ import { AdvancedChart } from 'react-tradingview-embed';
 import TradeLogs from './TradeLogs';
 import BalanceStatus from './BalanceStatus';
 import BotControl from './BotControl';
-import '../App.css';
+import './App.css';
 
 const INIT_BALANCE = 50.0;
 
