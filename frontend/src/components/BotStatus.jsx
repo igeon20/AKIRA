@@ -2,7 +2,7 @@ import React from 'react';
 import Gear from './Gear';
 import '../App.css';
 
-export default function BotStatus({ isRunning, setIsRunning }) {
+export default function BotStatus({ isRunning, onStart, onStop }) {
   const running = isRunning ? "" : "gear-paused";
   return (
     <div className="bot-status" style={{ margin: 0, marginBottom: 0, flexDirection: 'column', alignItems: 'center', display: 'flex', gap: 10 }}>
@@ -29,10 +29,10 @@ export default function BotStatus({ isRunning, setIsRunning }) {
         </span>
       </div>
       <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 2 }}>
-        <button onClick={() => setIsRunning(true)} style={{ padding: '8px 22px', fontSize: 16, borderRadius: 10, border: 'none', background: '#2d333b', color: '#fff', cursor: 'pointer' }}>
+        <button onClick={onStart} style={{ padding: '8px 22px', fontSize: 16, borderRadius: 10, border: 'none', background: '#2d333b', color: '#fff', cursor: 'pointer' }}>
           Start ▶️
         </button>
-        <button onClick={() => setIsRunning(false)} style={{ padding: '8px 22px', fontSize: 16, borderRadius: 10, border: 'none', background: '#555', color: '#fff', cursor: 'pointer' }}>
+        <button onClick={onStop} style={{ padding: '8px 22px', fontSize: 16, borderRadius: 10, border: 'none', background: '#555', color: '#fff', cursor: 'pointer' }}>
           Stop ⏹️
         </button>
       </div>
