@@ -2,7 +2,6 @@ import React from 'react';
 
 export default function Gear({ size = 60, teeth = 12, color = "#aaa", innerColor = "#888", holeColor = "#666", style }) {
   const center = 50;
-  const outerR = 44;
   const innerR = 36;
   const toothLength = 12;
   const toothWidth = 6;
@@ -15,11 +14,6 @@ export default function Gear({ size = 60, teeth = 12, color = "#aaa", innerColor
       {/* 톱니 */}
       {Array.from({ length: teeth }).map((_, i) => {
         const angle = angleStep * i - angleStep / 2;
-        const rad = angle * Math.PI / 180;
-        const x1 = center + innerR * Math.cos(rad);
-        const y1 = center + innerR * Math.sin(rad);
-        const x2 = center + (innerR + toothLength) * Math.cos(rad);
-        const y2 = center + (innerR + toothLength) * Math.sin(rad);
         return (
           <rect
             key={i}
