@@ -1,6 +1,5 @@
 import React from 'react';
 import Gear from './Gear';
-import './BotStatus.css'; // 이 파일이 없어도 App.css에 다 넣었으니 import만 있으면 됨
 
 export default function BotStatus({ isRunning }) {
   // 애니메이션 클래스 조합
