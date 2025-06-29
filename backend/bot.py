@@ -28,6 +28,7 @@ class BinanceBot:
     DATA_PATH = os.path.join("data", "minute_ohlcv.csv")
 
     def __init__(self):
+        # Binance client 설정
         self.client = Client(
             api_key=os.getenv("BINANCE_API_KEY"),
             api_secret=os.getenv("BINANCE_SECRET_KEY"),
@@ -76,26 +77,23 @@ class BinanceBot:
             if df is None:
                 time.sleep(5)
                 continue
+
             price = self.get_price()
             if price is None:
                 time.sleep(5)
                 continue
 
+            # 자동 청산 (TP/SL) 관리
+            if self.manage_position(price):
+                time.sleep(1)
+                continue
+
+            # AI 신호 및 지표
             ai_sig = self.get_ai_signal()
             rsi = df['RSI'].iloc[-1]
             vol = df['Volume'].iloc[-1]
             vol_ma = df['Vol_MA5'].iloc[-1]
             whale = vol > vol_ma * 1.07
-
-            # 자동 TP/SL
-            if self.position != 0:
-                pnl_rate = ((price - self.entry_price) / self.entry_price) if self.position == 1 else ((self.entry_price - price) / self.entry_price)
-                if pnl_rate >= self.TP:
-                    self.close_position(price, "TP 익절")
-                    continue
-                elif pnl_rate <= self.SL:
-                    self.close_position(price, "SL 손절")
-                    continue
 
             # 진입 로직
             if ai_sig == 1 and self.position <= 0 and rsi < 42 and whale:
@@ -104,6 +102,7 @@ class BinanceBot:
                 qty = self.calc_max_qty(price)
                 if qty > self.MIN_QTY:
                     self.enter_position('BUY', qty, price)
+
             elif ai_sig == -1 and self.position >= 0 and rsi > 58 and whale:
                 if self.position == 1:
                     self.close_position(price, "신호 전환")
@@ -120,7 +119,9 @@ class BinanceBot:
     def _fetch_data(self, interval='1m', limit=100):
         try:
             data = self.client.futures_klines(symbol=self.SYMBOL, interval=interval, limit=limit)
-            df = pd.DataFrame(data, columns=['ts','Open','High','Low','Close','Volume','ct','qv','t','tbv','tqv','ign'])
+            df = pd.DataFrame(data, columns=[
+                'ts','Open','High','Low','Close','Volume','ct','qv','t','tbv','tqv','ign'
+            ])
             df[['Open','High','Low','Close','Volume']] = df[['Open','High','Low','Close','Volume']].astype(float)
             df['RSI'] = ta.momentum.RSIIndicator(df['Close'], window=14).rsi()
             df['Vol_MA5'] = df['Volume'].rolling(5).mean()
@@ -154,11 +155,18 @@ class BinanceBot:
     def enter_position(self, side, qty, price):
         order_price = self.align_to_tick(price * (0.999 if side == 'BUY' else 1.001))
         try:
-            self.client.futures_create_order(symbol=self.SYMBOL, side=side, type='LIMIT', timeInForce='GTC', price=order_price, quantity=qty)
+            self.client.futures_create_order(
+                symbol=self.SYMBOL,
+                side=side,
+                type='LIMIT',
+                timeInForce='GTC',
+                price=order_price,
+                quantity=qty
+            )
             self.position = 1 if side == 'BUY' else -1
             self.entry_price = order_price
             self.last_qty = qty
-            commission = order_price * qty * 0.0002
+            commission = order_price * qty * self.FEE / 2  # 진입 수수료
             self.balance -= commission
             self.entry_commission = commission
             self._log(f"진입({side}) 성공: 가격={order_price}, 수량={qty}, 수수료={commission:.4f}")
@@ -170,9 +178,17 @@ class BinanceBot:
         side = 'SELL' if self.position == 1 else 'BUY'
         order_price = self.align_to_tick(price * (1.001 if side == 'SELL' else 0.999))
         try:
-            self.client.futures_create_order(symbol=self.SYMBOL, side=side, type='LIMIT', timeInForce='GTC', price=order_price, quantity=self.last_qty)
-            pnl_raw = ((order_price - self.entry_price) if self.position == 1 else (self.entry_price - order_price)) * self.last_qty
-            commission = order_price * self.last_qty * 0.0002
+            self.client.futures_create_order(
+                symbol=self.SYMBOL,
+                side=side,
+                type='LIMIT',
+                timeInForce='GTC',
+                price=order_price,
+                quantity=self.last_qty
+            )
+            pnl_raw = ((order_price - self.entry_price) if self.position == 1 else
+                       (self.entry_price - order_price)) * self.last_qty
+            commission = order_price * self.last_qty * self.FEE / 2  # 청산 수수료
             total_comm = self.entry_commission + commission
             net_pnl = pnl_raw - total_comm
             self.balance += net_pnl
@@ -186,4 +202,27 @@ class BinanceBot:
             self.last_qty = 0
 
     def manage_position(self, price):
-        pass  # 자동청산은 start_bot에서 처리
+        """
+        현재 포지션의 TP/SL 조건을 체크하고, 조건 충족 시 포지션을 청산합니다.
+        :param price: 현재 시장가
+        :return: 청산이 발생했으면 True, 아니면 False
+        """
+        if self.position == 0:
+            return False
+
+        # PnL 비율 계산
+        if self.position == 1:
+            pnl_rate = (price - self.entry_price) / self.entry_price
+        else:
+            pnl_rate = (self.entry_price - price) / self.entry_price
+
+        # TP 충족
+        if pnl_rate >= self.TP:
+            self.close_position(price, "TP 익절")
+            return True
+        # SL 충족
+        if pnl_rate <= self.SL:
+            self.close_position(price, "SL 손절")
+            return True
+
+        return False
