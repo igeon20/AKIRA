@@ -85,12 +85,10 @@ def ai_signal():
     if AI_MODEL is None or not FEATURE_COLS:
         return {"signal": 0, "error": "AI 모델 미적용"}
     try:
-        # 최신 1분봉 데이터 1줄 불러와서 예측
         df = pd.read_csv(DATA_PATH)
         df.columns = [c.strip().lower() for c in df.columns]
-        row = df.iloc[[-1]][FEATURE_COLS]
-        pred = int(AI_MODEL.predict(row)[0])
-        # 1: long, -1: short, 0: hold
+        last_row = df.iloc[[-1]][FEATURE_COLS].reset_index(drop=True)
+        pred = int(AI_MODEL.predict(last_row)[0])
         return {"signal": pred}
     except Exception as e:
         return {"signal": 0, "error": str(e)}
