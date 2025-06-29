@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import BotStatus from './BotStatus';
+import BotStatus from './components/BotStatus';
 import { AdvancedChart } from 'react-tradingview-embed';
-import TradeLogs from './TradeLogs';
-import BalanceStatus from './BalanceStatus';
-import BotControl from './BotControl';
+import TradeLogs from './components/TradeLogs';
+import BalanceStatus from './components/BalanceStatus';
+import BotControl from './components/BotControl';
 import './App.css';
 
 const INIT_BALANCE = 50.0;
