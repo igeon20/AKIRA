@@ -21,9 +21,10 @@ class BinanceBot:
     TP = 0.08   # 목표 8% 익절
     SL = -0.04  # 목표 4% 손절
 
-    # AI 모델 로드 경로
-    AI_MODEL_PATH = os.path.join(os.path.dirname(__file__), "ai_model", "ai_model.pkl")
-    FEATURE_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "ai_model", "feature_config.json")
+    # AI 모델/피처 경로 설정 (bot.py 위치 기준)
+    BASE_DIR = os.path.dirname(__file__)
+    AI_MODEL_PATH = os.path.join(BASE_DIR, "ai_model", "ai_model.pkl")
+    FEATURE_CONFIG_PATH = os.path.join(BASE_DIR, "ai_model", "feature_config.json")
 
     # 진입 조건 설정
     USE_RSI_FILTER = True
@@ -32,6 +33,7 @@ class BinanceBot:
     USE_WHALE_FILTER = False
 
     def __init__(self):
+        # Binance 클라이언트 설정
         self.client = Client(
             api_key=os.getenv("BINANCE_API_KEY"),
             api_secret=os.getenv("BINANCE_SECRET_KEY"),
@@ -47,7 +49,7 @@ class BinanceBot:
         self.running = False
         self.trade_logs = []
 
-        # AI 모델과 피처 리스트 한 번 로드
+        # AI 모델 및 피처 리스트 로드
         if os.path.exists(self.AI_MODEL_PATH) and os.path.exists(self.FEATURE_CONFIG_PATH):
             try:
                 self.AI_MODEL = joblib.load(self.AI_MODEL_PATH)
@@ -86,23 +88,22 @@ class BinanceBot:
             try:
                 self._log("-- 새로운 사이클 --")
 
-                # 데이터와 현재가
+                # 데이터 로드 및 현재가 조회
                 df = self._fetch_data()
                 price = self.get_price()
                 if df is None or price is None:
                     time.sleep(5)
                     continue
 
-                # 지표 계산
-                rsi = df['RSI'].iloc[-1]
-                vol = df['Volume'].iloc[-1]
-                vol_ma = df['Vol_MA5'].iloc[-1]
+                # 주요 지표 계산 (소문자 컬럼 사용)
+                rsi = df['rsi'].iloc[-1]
+                vol = df['volume'].iloc[-1]
+                vol_ma = df['vol_ma5'].iloc[-1]
                 whale = vol > vol_ma * 1.03
-                # AI 시그널 예측 (파일 로드 없이 모델만 소비)
                 ai_sig = self.get_ai_signal(df)
                 self._log(f"가격={price:.2f}, RSI={rsi:.2f}, vol={vol:.0f}, whale={'Y' if whale else 'N'}, AI_signal={ai_sig}")
 
-                # 자동 TP/SL
+                # 자동 TP/SL 체크
                 if self.manage_position(price):
                     time.sleep(1)
                     continue
@@ -139,9 +140,13 @@ class BinanceBot:
         try:
             klines = self.client.futures_klines(symbol=self.SYMBOL, interval=interval, limit=limit)
             df = pd.DataFrame(klines, columns=['ts','Open','High','Low','Close','Volume','ct','qv','t','tbv','tqv','ign'])
-            df[['Open','High','Low','Close','Volume']] = df[['Open','High','Low','Close','Volume']].astype(float)
-            df['RSI'] = ta.momentum.RSIIndicator(df['Close'], window=14).rsi()
-            df['Vol_MA5'] = df['Volume'].rolling(5).mean()
+            # 컬럼명을 모두 소문자로 변환
+            df.columns = [col.lower() for col in df.columns]
+            # 필수 컬럼 타입 캐스팅
+            df[['open','high','low','close','volume']] = df[['open','high','low','close','volume']].astype(float)
+            # 지표 계산
+            df['rsi'] = ta.momentum.RSIIndicator(df['close'], window=14).rsi()
+            df['vol_ma5'] = df['volume'].rolling(5).mean()
             df.dropna(inplace=True)
             return df if not df.empty else None
         except Exception as e:
@@ -152,8 +157,8 @@ class BinanceBot:
         if self.AI_MODEL is None or not self.FEATURE_COLS:
             return 0
         try:
-            # 라이브 df에서 바로 피처 추출
-            features = df[self.FEATURE_COLS].iloc[-1:]
+            # 전달받은 df에서 바로 피처 추출
+            features = df[self.FEATURE_COLS].iloc[-1:].reset_index(drop=True)
             return int(self.AI_MODEL.predict(features)[0])
         except Exception as e:
             self._log(f"[오류] AI 예측 실패: {e}")
@@ -177,9 +182,7 @@ class BinanceBot:
             return
         order_price = self.align_to_tick(price * (0.999 if side == 'BUY' else 1.001))
         try:
-            self.client.futures_create_order(
-                symbol=self.SYMBOL, side=side, type='LIMIT', timeInForce='GTC', price=order_price, quantity=qty
-            )
+            self.client.futures_create_order(symbol=self.SYMBOL, side=side, type='LIMIT', timeInForce='GTC', price=order_price, quantity=qty)
             self.position = 1 if side == 'BUY' else -1
             self.entry_price = order_price
             self.last_qty = qty
