@@ -88,4 +88,4 @@ def ai_signal():
         return {"signal": 0, "error": str(e)}
 
 if __name__ == "__main__":
-    uvicorn.run("api:app", host="0.0.0.0", port=int(os.getenv("PORT", 8000)), access_log=False)
+    uvicorn.run("api:app", host="0.0.0.0", port=int(os.getenv("PORT", 10000)), access_log=False)
