@@ -7,6 +7,7 @@ import joblib
 import json
 import pandas as pd
 import os
+import uvicorn
 
 app = FastAPI()
 app.add_middleware(
@@ -23,7 +24,7 @@ app.add_middleware(
 
 bot = BinanceBot()
 
-# 모델 로드
+# AI 모델 로드
 AI_MODEL_PATH = os.path.join("ai_model", "ai_model.pkl")
 FEATURE_CONFIG_PATH = os.path.join("ai_model", "feature_config.json")
 DATA_PATH = os.path.join("data", "minute_ohlcv.csv")
@@ -37,25 +38,27 @@ else:
 
 @app.api_route("/", methods=["GET","HEAD"], include_in_schema=False)
 def read_root(req: Request):
-    if req.method == 'HEAD': return JSONResponse(content=None, status_code=200)
-    return {"message":"API"}
+    if req.method == 'HEAD':
+        return JSONResponse(content=None, status_code=200)
+    return {"message": "API"}
 
 @app.get("/ping")
-def ping(): return {"status":"ok"}
+def ping():
+    return {"status": "ok"}
 
 @app.post("/bot/start")
-def start():
+def start_bot():
     if not bot.running:
-        Thread(target=bot.start_bot).start()
-        return {"message":"🚀 봇 시작됨"}
-    return {"message":"⚠️ 봇 이미 실행중"}
+        Thread(target=bot.start_bot, daemon=True).start()
+        return {"message": "🚀 봇 시작됨"}
+    return {"message": "⚠️ 봇 이미 실행중"}
 
 @app.post("/bot/stop")
-def stop():
+def stop_bot():
     if bot.running:
         bot.stop()
-        return {"message":"🛑 봇 정지됨"}
-    return {"message":"⚠️ 봇 이미 정지됨"}
+        return {"message": "🛑 봇 정지됨"}
+    return {"message": "⚠️ 봇 이미 정지됨"}
 
 @app.get("/bot/status")
 def bot_status():
@@ -64,7 +67,7 @@ def bot_status():
         "balance": bot.balance,
         "position": bot.position,
         "entry_price": bot.entry_price,
-        "leverage": getattr(bot, 'leverage', None)
+        "leverage": bot.LEVERAGE
     }
 
 @app.get("/bot/logs")
@@ -83,3 +86,6 @@ def ai_signal():
         return {"signal": pred}
     except Exception as e:
         return {"signal": 0, "error": str(e)}
+
+if __name__ == "__main__":
+    uvicorn.run("api:app", host="0.0.0.0", port=int(os.getenv("PORT", 8000)), access_log=False)
