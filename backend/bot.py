@@ -22,15 +22,14 @@ class BinanceBot:
     SL = -0.04  # 목표 4% 손절
 
     # AI 모델 로드 경로
-    AI_MODEL_PATH = os.path.join("ai_model", "ai_model.pkl")
-    FEATURE_CONFIG_PATH = os.path.join("ai_model", "feature_config.json")
-    DATA_PATH = os.path.join("data", "minute_ohlcv.csv")
+    AI_MODEL_PATH = os.path.join(os.path.dirname(__file__), "ai_model", "ai_model.pkl")
+    FEATURE_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "ai_model", "feature_config.json")
 
-    # 진입 조건 설정 (완화된 필터)
+    # 진입 조건 설정
     USE_RSI_FILTER = True
     RSI_ENTRY_LONG = 70
     RSI_ENTRY_SHORT = 30
-    USE_WHALE_FILTER = False  # False로 설정하여 거래량 필터 제거
+    USE_WHALE_FILTER = False
 
     def __init__(self):
         self.client = Client(
@@ -48,14 +47,23 @@ class BinanceBot:
         self.running = False
         self.trade_logs = []
 
+        # AI 모델과 피처 리스트 한 번 로드
         if os.path.exists(self.AI_MODEL_PATH) and os.path.exists(self.FEATURE_CONFIG_PATH):
-            self.AI_MODEL = joblib.load(self.AI_MODEL_PATH)
-            with open(self.FEATURE_CONFIG_PATH) as f:
-                self.FEATURE_COLS = json.load(f)
+            try:
+                self.AI_MODEL = joblib.load(self.AI_MODEL_PATH)
+                with open(self.FEATURE_CONFIG_PATH) as f:
+                    self.FEATURE_COLS = json.load(f)
+                self._log("[설정] AI 모델 로드 성공")
+            except Exception as e:
+                self.AI_MODEL = None
+                self.FEATURE_COLS = []
+                self._log(f"[오류] AI 모델 로드 실패: {e}")
         else:
             self.AI_MODEL = None
             self.FEATURE_COLS = []
+            self._log("[경고] AI 모델 또는 피처 파일 없음, AI 미사용")
 
+        # 레버리지 설정
         try:
             self.client.futures_change_leverage(symbol=self.SYMBOL, leverage=self.LEVERAGE)
             self._log(f"[설정] 레버리지 {self.LEVERAGE}x 적용")
@@ -75,48 +83,53 @@ class BinanceBot:
         self.running = True
         self._log("봇 시작 🤖")
         while self.running:
-            # 사이클 시작 로그
-            self._log("-- 새로운 사이클 --")
+            try:
+                self._log("-- 새로운 사이클 --")
 
-            df = self._fetch_data()
-            price = self.get_price()
-            if df is None or price is None:
-                time.sleep(1)
-                continue
+                # 데이터와 현재가
+                df = self._fetch_data()
+                price = self.get_price()
+                if df is None or price is None:
+                    time.sleep(5)
+                    continue
 
-            # 매 사이클 주요 값 출력
-            rsi = df['RSI'].iloc[-1]
-            vol = df['Volume'].iloc[-1]
-            vol_ma = df['Vol_MA5'].iloc[-1]
-            whale = vol > vol_ma * 1.03
-            ai_sig = self.get_ai_signal()
-            self._log(f"가격={price:.2f}, RSI={rsi:.2f}, vol={vol:.0f}, whale={'Y' if whale else 'N'}, AI_signal={ai_sig}")
+                # 지표 계산
+                rsi = df['RSI'].iloc[-1]
+                vol = df['Volume'].iloc[-1]
+                vol_ma = df['Vol_MA5'].iloc[-1]
+                whale = vol > vol_ma * 1.03
+                # AI 시그널 예측 (파일 로드 없이 모델만 소비)
+                ai_sig = self.get_ai_signal(df)
+                self._log(f"가격={price:.2f}, RSI={rsi:.2f}, vol={vol:.0f}, whale={'Y' if whale else 'N'}, AI_signal={ai_sig}")
 
-            # 자동 TP/SL 관리
-            if self.manage_position(price):
-                time.sleep(1)
-                continue
+                # 자동 TP/SL
+                if self.manage_position(price):
+                    time.sleep(1)
+                    continue
 
-            # 진입 로직 (완화된 필터 적용)
-            enter_long = (ai_sig == 1)
-            enter_short = (ai_sig == -1)
-            if self.USE_RSI_FILTER:
-                enter_long &= (rsi < self.RSI_ENTRY_LONG)
-                enter_short &= (rsi > self.RSI_ENTRY_SHORT)
-            if self.USE_WHALE_FILTER:
-                enter_long &= whale
-                enter_short &= whale
+                # 진입 조건
+                enter_long = (ai_sig == 1)
+                enter_short = (ai_sig == -1)
+                if self.USE_RSI_FILTER:
+                    enter_long &= (rsi < self.RSI_ENTRY_LONG)
+                    enter_short &= (rsi > self.RSI_ENTRY_SHORT)
+                if self.USE_WHALE_FILTER:
+                    enter_long &= whale
+                    enter_short &= whale
 
-            if enter_long and self.position <= 0:
-                if self.position == -1:
-                    self.close_position(price, "신호 전환")
-                self._trade('BUY', price)
-            elif enter_short and self.position >= 0:
-                if self.position == 1:
-                    self.close_position(price, "신호 전환")
-                self._trade('SELL', price)
+                if enter_long and self.position <= 0:
+                    if self.position == -1:
+                        self.close_position(price, "신호 전환")
+                    self._trade('BUY', price)
+                elif enter_short and self.position >= 0:
+                    if self.position == 1:
+                        self.close_position(price, "신호 전환")
+                    self._trade('SELL', price)
 
-            time.sleep(5)
+            except Exception as e:
+                self._log(f"[오류] 루프 실행 중 예외: {e}")
+            finally:
+                time.sleep(5)
 
     def stop(self):
         self.running = False
@@ -124,8 +137,8 @@ class BinanceBot:
 
     def _fetch_data(self, interval='1m', limit=100):
         try:
-            data = self.client.futures_klines(symbol=self.SYMBOL, interval=interval, limit=limit)
-            df = pd.DataFrame(data, columns=['ts','Open','High','Low','Close','Volume','ct','qv','t','tbv','tqv','ign'])
+            klines = self.client.futures_klines(symbol=self.SYMBOL, interval=interval, limit=limit)
+            df = pd.DataFrame(klines, columns=['ts','Open','High','Low','Close','Volume','ct','qv','t','tbv','tqv','ign'])
             df[['Open','High','Low','Close','Volume']] = df[['Open','High','Low','Close','Volume']].astype(float)
             df['RSI'] = ta.momentum.RSIIndicator(df['Close'], window=14).rsi()
             df['Vol_MA5'] = df['Volume'].rolling(5).mean()
@@ -135,16 +148,15 @@ class BinanceBot:
             self._log(f"[오류] 데이터 로드 실패: {e}")
             return None
 
-    def get_ai_signal(self):
-        if not self.AI_MODEL or not self.FEATURE_COLS:
+    def get_ai_signal(self, df=None):
+        if self.AI_MODEL is None or not self.FEATURE_COLS:
             return 0
         try:
-            df = pd.read_csv(self.DATA_PATH)
-            df.columns = [c.strip().lower() for c in df.columns]
-            row = df.iloc[[-1]][self.FEATURE_COLS]
-            return int(self.AI_MODEL.predict(row)[0])
+            # 라이브 df에서 바로 피처 추출
+            features = df[self.FEATURE_COLS].iloc[-1:]
+            return int(self.AI_MODEL.predict(features)[0])
         except Exception as e:
-            self._log(f"[오류] AI 신호 획득 실패: {e}")
+            self._log(f"[오류] AI 예측 실패: {e}")
             return 0
 
     def get_price(self):
@@ -166,8 +178,7 @@ class BinanceBot:
         order_price = self.align_to_tick(price * (0.999 if side == 'BUY' else 1.001))
         try:
             self.client.futures_create_order(
-                symbol=self.SYMBOL, side=side, type='LIMIT', timeInForce='GTC',
-                price=order_price, quantity=qty
+                symbol=self.SYMBOL, side=side, type='LIMIT', timeInForce='GTC', price=order_price, quantity=qty
             )
             self.position = 1 if side == 'BUY' else -1
             self.entry_price = order_price
