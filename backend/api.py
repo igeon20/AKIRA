@@ -1,13 +1,12 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse
 from threading import Thread
-from bot import BinanceBot
+import pandas as pd
 import joblib
 import json
-import pandas as pd
 import os
-import uvicorn
+from bot import BinanceBot
 
 app = FastAPI()
 app.add_middleware(
@@ -24,7 +23,6 @@ app.add_middleware(
 
 bot = BinanceBot()
 
-# AI 모델 로드
 AI_MODEL_PATH = os.path.join("ai_model", "ai_model.pkl")
 FEATURE_CONFIG_PATH = os.path.join("ai_model", "feature_config.json")
 DATA_PATH = os.path.join("data", "minute_ohlcv.csv")
@@ -35,12 +33,6 @@ if os.path.exists(AI_MODEL_PATH) and os.path.exists(FEATURE_CONFIG_PATH):
 else:
     AI_MODEL = None
     FEATURE_COLS = []
-
-@app.api_route("/", methods=["GET","HEAD"], include_in_schema=False)
-def read_root(req: Request):
-    if req.method == 'HEAD':
-        return JSONResponse(content=None, status_code=200)
-    return {"message": "API"}
 
 @app.get("/ping")
 def ping():
@@ -88,4 +80,5 @@ def ai_signal():
         return {"signal": 0, "error": str(e)}
 
 if __name__ == "__main__":
+    import uvicorn
     uvicorn.run("api:app", host="0.0.0.0", port=int(os.getenv("PORT", 10000)), access_log=False)
