@@ -54,7 +54,7 @@ class BinanceBot:
                 self.AI_MODEL = joblib.load(self.AI_MODEL_PATH)
                 with open(self.FEATURE_CONFIG_PATH) as f:
                     self.FEATURE_COLS = json.load(f)
-            except Exception as e:
+            except Exception:
                 self.AI_MODEL = None
                 self.FEATURE_COLS = []
         else:
@@ -78,6 +78,7 @@ class BinanceBot:
 
     def start_bot(self):
         self.running = True
+        self._log("봇 시작 🤖")  # 시작 시 로그 추가
         while self.running:
             try:
                 df = self._fetch_data()
@@ -137,8 +138,7 @@ class BinanceBot:
             df['vol_ma5'] = df['volume'].rolling(5).mean()
             df.dropna(inplace=True)
             return df
-        except Exception as e:
-            # 데이터 로드 실패 시 무시
+        except Exception:
             return None
 
     def get_ai_signal(self, df=None):
@@ -182,7 +182,6 @@ class BinanceBot:
             self.balance -= commission
             self._log(f"{label}: 가격={order_price}, 수량={qty}, 수수료={commission:.4f}")
         except BinanceAPIException as e:
-            # 포지션 한도 초과 스킵
             if e.code == -2027:
                 return
             else:
