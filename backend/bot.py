@@ -78,7 +78,7 @@ class BinanceBot:
 
     def start_bot(self):
         self.running = True
-        self._log("봇 시작 🤖")  # 시작 시 로그 추가
+        self._log("봇 시작 🤖")
         while self.running:
             try:
                 df = self._fetch_data()
@@ -232,3 +232,4 @@ class BinanceBot:
             self.close_position(price, "SL")
             return True
         return False
+
