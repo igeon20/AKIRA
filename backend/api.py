@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from threading import Thread
 import pandas as pd
 import joblib
@@ -21,6 +21,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Render Health Check: respond to HEAD /
+@app.head("/", include_in_schema=False)
+def health_check():
+    return Response(status_code=200)
+
 bot = BinanceBot()
 
 AI_MODEL_PATH = os.path.join("ai_model", "ai_model.pkl")
@@ -33,10 +38,6 @@ if os.path.exists(AI_MODEL_PATH) and os.path.exists(FEATURE_CONFIG_PATH):
 else:
     AI_MODEL = None
     FEATURE_COLS = []
-
-@app.get("/ping")
-def ping():
-    return {"status": "ok"}
 
 @app.post("/bot/start")
 def start_bot():
