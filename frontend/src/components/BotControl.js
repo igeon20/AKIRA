@@ -56,7 +56,7 @@ function BotControl() {
   return (
     <div style={{textAlign: 'center', padding: '20px'}}>
       <h2>봇 상태:</h2>
-      <h1>{status ? "✅ 봇 작동중" : "❌ 봇 정지" }</h1>
+      <h1>{status ? "✅ 봇 작동 중" : "❌ 봇 정지" }</h1>
 
       <button 
         onClick={startBot} 
