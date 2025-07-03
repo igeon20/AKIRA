@@ -15,7 +15,7 @@ export default function BotStatus({ isRunning, onStart, onStop }) {
         gap: 10,
         marginBottom: 8
       }}>
-        {isRunning ? "✅ Bot Running" : "⏸️ Bot Stopped"}
+        {isRunning ? "✅ 봇 작동 중" : "⏸️ 봇 정지"}
         <span className="gear-set">
           <span className={`gear-spin clockwise ${running}`}>
             <Gear size={42} teeth={13}/>
@@ -30,10 +30,10 @@ export default function BotStatus({ isRunning, onStart, onStop }) {
       </div>
       <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 2 }}>
         <button onClick={onStart} style={{ padding: '8px 22px', fontSize: 16, borderRadius: 10, border: 'none', background: '#2d333b', color: '#fff', cursor: 'pointer' }}>
-          Start ▶️
+          시작 ▶️
         </button>
         <button onClick={onStop} style={{ padding: '8px 22px', fontSize: 16, borderRadius: 10, border: 'none', background: '#555', color: '#fff', cursor: 'pointer' }}>
-          Stop ⏹️
+          정지 ⏹️
         </button>
       </div>
     </div>
