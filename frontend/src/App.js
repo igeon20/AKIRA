@@ -61,7 +61,7 @@ function App() {
           fontSize: 38,
           color: '#ececec'
         }}>
-          🚀 EVEELEN TRADE BOT 🚀
+          🚀 이블린 트레이드 봇 🚀
         </h1>
       </header>
       <main style={{ padding: '0 20px' }}>
