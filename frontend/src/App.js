@@ -1,6 +1,6 @@
 // src/App.js
 import React, { useState, useEffect, useRef } from "react";
-import BalanceStatus from "./BalanceStatus";
+import BalanceStatus from "./components/BalanceStatus";
 import "./App.css";
 
 // 초기 자본을 .env 파일에서 받거나 기본값 50 설정
