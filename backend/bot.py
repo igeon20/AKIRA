@@ -1,238 +1,176 @@
 import os
 import time
+import json
+import asyncio
+import logging
+from collections import deque
 from dotenv import load_dotenv
 from binance.client import Client
 from binance.exceptions import BinanceAPIException
-import pandas as pd
+from binance.websockets import BinanceSocketManager
 import ta
-import joblib
-import json
 
+# 환경변수 로드
 load_dotenv()
 
+# 로그 설정
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(asctime)s] %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+    handlers=[
+        logging.FileHandler('trade_logs.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger()
+
 class BinanceBot:
-    SYMBOL = "BTCUSDT"
-    QTY_PRECISION = 3
+    SYMBOL = os.getenv('SYMBOL', 'BTCUSDT')
     PRICE_PRECISION = 2
-    # MIN_QTY는 더 이상 calc_max_qty에서 사용되지 않습니다.
-    MIN_QTY = 0.001
-    LEVERAGE = 125
-    FEE = 0.0004
+    QTY_PRECISION = 3
 
-    INIT_BALANCE = 50.0
-    TP = 0.08   # 목표 0.8% 익절
-    SL = -0.04  # 목표 0.4% 손절
+    # 레버리지 & 리스크 설정
+    LEVERAGE = int(os.getenv('LEVERAGE', 125))
+    RISK_PER_TRADE = float(os.getenv('RISK_PER_TRADE', 0.01))  # 계좌 대비 1% 리스크
 
-    BASE_DIR = os.path.dirname(__file__)
-    AI_MODEL_PATH = os.path.join(BASE_DIR, "ai_model", "ai_model.pkl")
-    FEATURE_CONFIG_PATH = os.path.join(BASE_DIR, "ai_model", "feature_config.json")
+    # TP/SL 퍼센트 (차후 OCO 사용 시 직접 주문)
+    TP_PCT = float(os.getenv('TP_PCT', 0.008))  # 0.8%
+    SL_PCT = float(os.getenv('SL_PCT', -0.04)) # -4%
 
-    USE_RSI_FILTER = True
-    RSI_ENTRY_LONG = 70
-    RSI_ENTRY_SHORT = 30
-    USE_WHALE_FILTER = False
+    # 주문 재시도 설정
+    MAX_RETRIES = 5
+    BACKOFF_INITIAL = 1  # 초
+
+    # ATR 사이징 윈도우
+    ATR_WINDOW = 14
 
     def __init__(self):
-        self.client = Client(
-            api_key=os.getenv("BINANCE_API_KEY"),
-            api_secret=os.getenv("BINANCE_SECRET_KEY"),
-            testnet=True
-        )
-        self.client.API_URL = os.getenv("BINANCE_BASE_URL")
+        # REST 클라이언트
+        self.client = Client(api_key=os.getenv('BINANCE_API_KEY'),
+                             api_secret=os.getenv('BINANCE_SECRET_KEY'),
+                             testnet=True)
+        self.client.API_URL = os.getenv('BINANCE_BASE_URL')
+        self.client.futures_change_leverage(symbol=self.SYMBOL, leverage=self.LEVERAGE)
 
-        self.balance = self.INIT_BALANCE
+        # 웹소켓 매니저
+        self.bm = BinanceSocketManager(self.client)
+        self.price = None
+        # 과거 가격 데이터 저장
+        self.highs = deque(maxlen=self.ATR_WINDOW + 1)
+        self.lows  = deque(maxlen=self.ATR_WINDOW + 1)
+        self.closes= deque(maxlen=self.ATR_WINDOW + 1)
+        # 포지션 상태
         self.position = 0
         self.entry_price = None
-        self.entry_commission = 0
-        self.last_qty = 0
-        self.running = False
-        self.trade_logs = []
+        self.entry_qty = 0
 
-        if os.path.exists(self.AI_MODEL_PATH) and os.path.exists(self.FEATURE_CONFIG_PATH):
-            try:
-                self.AI_MODEL = joblib.load(self.AI_MODEL_PATH)
-                with open(self.FEATURE_CONFIG_PATH) as f:
-                    self.FEATURE_COLS = json.load(f)
-            except Exception:
-                self.AI_MODEL = None
-                self.FEATURE_COLS = []
-        else:
-            self.AI_MODEL = None
-            self.FEATURE_COLS = []
+    def _start_ws(self):
+        # 틱 가격 업데이트
+        self.bm.start_symbol_ticker_socket(self.SYMBOL, self._on_ticker)
+        self.bm.start()
 
+    def _on_ticker(self, msg):
         try:
-            self.client.futures_change_leverage(symbol=self.SYMBOL, leverage=self.LEVERAGE)
+            price = float(msg['c'])  # 현재가
+            self.price = round(price, self.PRICE_PRECISION)
+            # ATR용 과거 데이터에 스냅샷 기록
+            self.highs.append(float(msg['h']))
+            self.lows.append(float(msg['l']))
+            self.closes.append(float(msg['c']))
         except Exception:
             pass
 
-    def _log(self, msg):
-        t = time.strftime("%Y-%m-%d %H:%M:%S")
-        entry = f"[{t}] {msg}"
-        print(entry)
-        self.trade_logs.append(entry)
-
-    def align_to_tick(self, price):
-        tick_size = 1 / (10 ** self.PRICE_PRECISION)
-        return round(round(price / tick_size) * tick_size, self.PRICE_PRECISION)
-
-    def start_bot(self):
-        self.running = True
-        self._log("봇 시작 🤖")
-        while self.running:
-            try:
-                df = self._fetch_data()
-                if df is None:
-                    time.sleep(5)
-                    continue
-
-                price = self.get_price()
-                if price is None:
-                    time.sleep(5)
-                    continue
-
-                # RSI·Whale 필터, AI 시그널
-                rsi = df['rsi'].iloc[-1]
-                vol = df['volume'].iloc[-1]
-                vol_ma = df['vol_ma5'].iloc[-1]
-                whale = vol > vol_ma * 1.03
-                ai_sig = self.get_ai_signal(df)
-
-                # TP/SL 관리
-                if self.manage_position(price):
-                    time.sleep(1)
-                    continue
-
-                # 진입 조건
-                enter_long = (ai_sig == 1)
-                enter_short = (ai_sig == -1)
-                if self.USE_RSI_FILTER:
-                    enter_long &= (rsi < self.RSI_ENTRY_LONG)
-                    enter_short &= (rsi > self.RSI_ENTRY_SHORT)
-                if self.USE_WHALE_FILTER:
-                    enter_long &= whale
-                    enter_short &= whale
-
-                if enter_long and self.position == 0:
-                    self._trade('BUY', price, '롱 진입')
-                elif enter_short and self.position == 0:
-                    self._trade('SELL', price, '숏 진입')
-
-            except Exception as e:
-                self._log(f"[오류] 루프 실행 중 예외: {e}")
-            finally:
-                time.sleep(5)
-
-    def stop(self):
-        self.running = False
-        self._log("봇 정지")
-
-    def _fetch_data(self, interval='1m', limit=100):
-        try:
-            klines = self.client.futures_klines(symbol=self.SYMBOL, interval=interval, limit=limit)
-            df = pd.DataFrame(klines, columns=[
-                'ts','open','high','low','close','volume','ct','qv','t','tbv','tqv','ign'
-            ])
-            df = df[['open','high','low','close','volume']].astype(float)
-            df['rsi'] = ta.momentum.RSIIndicator(df['close'], window=14).rsi()
-            df['vol_ma5'] = df['volume'].rolling(5).mean()
-            df.dropna(inplace=True)
-            return df
-        except Exception:
+    def calc_atr(self):
+        if len(self.highs) < self.ATR_WINDOW + 1:
             return None
+        df = { 'high': list(self.highs), 'low': list(self.lows), 'close': list(self.closes) }
+        df = ta.utils.dropna(ta.trend.ATRIndicator(
+            high=df['high'], low=df['low'], close=df['close'], window=self.ATR_WINDOW
+        ).atr())
+        return df.iloc[-1]
 
-    def get_ai_signal(self, df=None):
-        if not getattr(self, 'AI_MODEL', None) or not self.FEATURE_COLS:
-            return 0
-        try:
-            features = df[self.FEATURE_COLS].iloc[-1:].reset_index(drop=True)
-            return int(self.AI_MODEL.predict(features)[0])
-        except Exception:
-            return 0
-
-    def get_price(self):
-        try:
-            return float(self.client.futures_symbol_ticker(symbol=self.SYMBOL)['price'])
-        except Exception:
-            return None
-
-    def calc_max_qty(self, price):
-        # MIN_QTY 바인딩 제거: 항상 잔고×레버리지/현재가 만큼 주문
-        notional = self.balance * self.LEVERAGE
-        qty = notional / price
+    def calc_qty(self):
+        # ATR 기반 동적 사이징
+        atr = self.calc_atr()
+        if atr:
+            risk_amount = (self.client.futures_account_balance()[0]['balance'])* self.RISK_PER_TRADE
+            qty = risk_amount / atr
+        else:
+            # ATR이 없으면 최대 Notional 사용
+            notional = float(self.client.futures_account_balance()[0]['balance']) * self.LEVERAGE
+            qty = notional / self.price
         return round(qty, self.QTY_PRECISION)
 
-    def _trade(self, side, price, label):
-        qty = self.calc_max_qty(price)
+    async def _retry_order(self, func, *args, **kwargs):
+        backoff = self.BACKOFF_INITIAL
+        for i in range(self.MAX_RETRIES):
+            try:
+                return func(*args, **kwargs)
+            except BinanceAPIException as e:
+                logger.warning(f"주문 실패({e.code}), 재시도 {i+1}/{self.MAX_RETRIES} after {backoff}s")
+                await asyncio.sleep(backoff)
+                backoff *= 2
+        logger.error("최대 재시도 도달, 주문 실패")
+        return None
+
+    async def enter_position(self, side):
+        qty = self.calc_qty()
         if qty <= 0:
             return
-        order_price = self.align_to_tick(price * (0.999 if side == 'BUY' else 1.001))
-        try:
-            # MARKET 주문으로 즉시 체결
-            self.client.futures_create_order(
-                symbol=self.SYMBOL,
-                side=side,
-                type='MARKET',
-                quantity=qty
+        # 시장 진입
+        order = await self._retry_order(
+            self.client.futures_create_order,
+            symbol=self.SYMBOL, side=side, type='MARKET', quantity=qty
+        )
+        if order:
+            self.position = 1 if side=='BUY' else -1
+            self.entry_price = self.price
+            self.entry_qty = qty
+            logger.info(f"진입: {side} price={self.price}, qty={qty}")
+            # OCO TP/SL 주문
+            tp_price = self.price * (1 + self.TP_PCT * (1 if side=='BUY' else -1))
+            sl_price = self.price * (1 + self.SL_PCT * (1 if side=='BUY' else -1))
+            # TP Limit 주문
+            await self._retry_order(
+                self.client.futures_create_order,
+                symbol=self.SYMBOL, side=('SELL' if side=='BUY' else 'BUY'),
+                type='LIMIT', timeInForce='GTC', quantity=qty,
+                price=round(tp_price, self.PRICE_PRECISION), reduceOnly=True
             )
-            self.position = 1 if side == 'BUY' else -1
-            self.entry_price = order_price
-            self.last_qty = qty
-            # 진입 수수료만 저장
-            commission = order_price * qty * self.FEE / 2
-            self.entry_commission = commission
-            self._log(f"{label}: 가격={order_price}, 수량={qty}, 예상 수수료={commission:.4f}")
-        except BinanceAPIException as e:
-            if e.code != -2027:
-                self._log(f"[오류] {label} 실패: {e}")
+            # SL Stop Market 주문
+            await self._retry_order(
+                self.client.futures_create_order,
+                symbol=self.SYMBOL, side=('SELL' if side=='BUY' else 'BUY'),
+                type='STOP_MARKET', stopPrice=round(sl_price, self.PRICE_PRECISION),
+                quantity=qty, reduceOnly=True
+            )
 
-    def close_position(self, price, reason=""):
+    async def manage(self):
+        # 포지션 없으면 진입 로직
         if self.position == 0:
+            # 예: 단순 RSI 기반 진입 (생략하고 AI/필터 로직 삽입 가능)
+            # if self.should_enter():
+            #     await self.enter_position('BUY' or 'SELL')
             return
-        closing_label = '롱 청산' if self.position == 1 else '숏 청산'
-        side = 'SELL' if self.position == 1 else 'BUY'
-        try:
-            self.client.futures_create_order(
-                symbol=self.SYMBOL,
-                side=side,
-                type='MARKET',
-                quantity=self.last_qty
-            )
-            executed_price = self.get_price()
-            order_price = self.align_to_tick(executed_price)
-            # PnL 계산
-            if self.position == 1:
-                raw_pnl = (order_price - self.entry_price) * self.last_qty
-            else:
-                raw_pnl = (self.entry_price - order_price) * self.last_qty
-            closing_commission = order_price * self.last_qty * self.FEE / 2
-            # 진입+청산 수수료를 합산 차감
-            net_pnl = raw_pnl - (self.entry_commission + closing_commission)
-            self.balance += net_pnl
-            self._log(f"{closing_label}({reason}): 가격={order_price}, 순PnL={net_pnl:.4f}, 잔고={self.balance:.2f}")
-        except BinanceAPIException as e:
-            if e.code != -2027:
-                self._log(f"[오류] {closing_label} 실패: {e}")
-        finally:
-            # 상태 초기화
-            self.position = 0
-            self.entry_price = None
-            self.entry_commission = 0
-            self.last_qty = 0
+        # 포지션 관리: OCO 활용, 별도 로직 불필요
+        pass
 
-    def manage_position(self, price):
-        if self.position == 0:
-            return False
-        # 현재 수익률(%)
-        if self.position == 1:
-            pnl_pct = (price - self.entry_price) / self.entry_price
-        else:
-            pnl_pct = (self.entry_price - price) / self.entry_price
-        self._log(f"현재 PnL%: {pnl_pct:.4%} (TP {self.TP:.2%}, SL {self.SL:.2%})")
-        # TP 또는 SL 조건
-        if pnl_pct >= self.TP:
-            self.close_position(price, "TP")
-            return True
-        if pnl_pct <= self.SL:
-            self.close_position(price, "SL")
-            return True
-        return False
+    async def monitor(self):
+        while True:
+            if not self.price:
+                await asyncio.sleep(0.1)
+                continue
+            # 주문 상태 모니터링, API Rate Limit 체크 등
+            # (추가 구현 가능)
+            await asyncio.sleep(1)
+
+    async def run(self):
+        self._start_ws()
+        await asyncio.gather(
+            self.monitor(),
+        )
+
+if __name__ == '__main__':
+    bot = BinanceBot()
+    asyncio.run(bot.run())
