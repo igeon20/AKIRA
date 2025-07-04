@@ -28,22 +28,23 @@ df.loc[pct > 0.002, 'label'] = 1
 df.loc[pct < -0.002, 'label'] = -1
 
 df = df.dropna(subset=feature_cols + ['label'])
-
 print("전체 샘플 수:", len(df))
+
 # 6. 데이터 일부만 사용 (예: 최신 8만개)
 if len(df) > 80000:
     df = df.tail(80000)
-    print("최신 4만개로 제한:", len(df))
+    print("최신 8만개로 제한:", len(df))
 
 X = df[feature_cols]
 y = df['label']
-
 print("학습 시작 (행:", X.shape[0], ", 피처:", X.shape[1], ") ...")
+
 # 7. 트리 수 줄이고 병렬처리로 속도 최적화
 model = RandomForestClassifier(n_estimators=40, random_state=42, n_jobs=-1)
 model.fit(X, y)
 print("학습 완료!")
 
+# 8. 모델 저장
 joblib.dump(model, "ai_model.pkl")
 with open("feature_config.json", "w") as f:
     json.dump(feature_cols, f)
