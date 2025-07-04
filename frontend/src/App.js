@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from "react";
 
 // components 디렉토리 아래에서 정확히 불러오기
-import BotControl    from "./components/BotControl.js";
+import BotControl    from "./components/BotControl";
 import BotStatus     from "./components/BotStatus";
 import BalanceStatus from "./components/BalanceStatus";
 import TradeLogs     from "./components/TradeLogs";
