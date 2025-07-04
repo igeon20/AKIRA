@@ -1,8 +1,10 @@
+# backend/api.py
+
 import os
 import asyncio
 import logging
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -31,7 +33,7 @@ bot = BinanceBot()
 
 @app.on_event("startup")
 async def startup_event():
-    # 봇 모니터링 태스크만 실행 (REST 폴링)
+    # REST 폴링 기반으로 봇을 백그라운드에서 실행
     asyncio.create_task(bot.run())
 
 # ─── 봇 제어 엔드포인트 ─────────────────────────────────
@@ -50,10 +52,9 @@ async def control_bot(cmd: BotControl):
     else:
         return JSONResponse({"status": "unknown action"}, status_code=400)
 
-# ─── 봇 상태 조회 ───────────────────────────────────────
+# ─── 봇 상태 조회 엔드포인트 ───────────────────────────────
 @app.get("/bot/status")
 async def get_status():
-    # 계좌 잔고 조회
     usdt = next(
         (b["balance"] for b in bot.client.futures_account_balance() if b["asset"] == "USDT"),
         0
@@ -65,15 +66,36 @@ async def get_status():
         "balance": float(usdt),
     }
 
-# ─── 최근 로그 조회 ─────────────────────────────────────
+# ─── 최근 로그 조회 엔드포인트 ────────────────────────────
 @app.get("/bot/logs")
 async def get_logs():
     return {"logs": bot.trade_logs[-100:]}
 
-# ─── React 정적 서빙 ───────────────────────────────────
-frontend_build = os.path.join(os.path.dirname(__file__), "frontend", "build")
-if os.path.isdir(frontend_build):
-    app.mount("/", StaticFiles(directory=frontend_build, html=True), name="static")
+# ─── React 정적 파일 서빙 및 SPA fallback ──────────────────
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# 프로젝트 루트 기준으로 ../frontend/build
+FRONTEND_DIR = os.path.abspath(os.path.join(BASE_DIR, os.pardir, "frontend", "build"))
+
+if os.path.isdir(FRONTEND_DIR):
+    # 1) 정적 리소스(js/css/img 등)
+    app.mount(
+        "/static",
+        StaticFiles(directory=os.path.join(FRONTEND_DIR, "static")),
+        name="static"
+    )
+
+    # 2) 루트 경로에 index.html 반환
+    @app.get("/", include_in_schema=False)
+    async def serve_index():
+        return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
+
+    # 3) 그 외 모든 GET 요청도 index.html (SPA 라우팅 지원)
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_spa(full_path: str):
+        file_path = os.path.join(FRONTEND_DIR, full_path)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+        return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
 
 if __name__ == "__main__":
     import uvicorn
