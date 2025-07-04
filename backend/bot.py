@@ -14,6 +14,7 @@ class BinanceBot:
     SYMBOL = "BTCUSDT"
     QTY_PRECISION = 3
     PRICE_PRECISION = 2
+    # MIN_QTY는 더 이상 calc_max_qty에서 사용되지 않습니다.
     MIN_QTY = 0.001
     LEVERAGE = 125
     FEE = 0.0004
@@ -155,13 +156,14 @@ class BinanceBot:
             return None
 
     def calc_max_qty(self, price):
+        # MIN_QTY 바인딩 제거: 항상 잔고×레버리지/현재가 만큼 주문
         notional = self.balance * self.LEVERAGE
-        qty = max(notional / price, self.MIN_QTY)
+        qty = notional / price
         return round(qty, self.QTY_PRECISION)
 
     def _trade(self, side, price, label):
         qty = self.calc_max_qty(price)
-        if qty <= self.MIN_QTY:
+        if qty <= 0:
             return
         order_price = self.align_to_tick(price * (0.999 if side == 'BUY' else 1.001))
         try:
