@@ -15,17 +15,15 @@ class BotControl(BaseModel):
 
 @app.on_event("startup")
 async def startup_event():
-    # 봇 루프 및 로그 브로드캐스터 시작
     asyncio.create_task(bot.run())
     asyncio.create_task(log_broadcaster())
 
 @app.post("/bot/control")
 async def control_bot(cmd: BotControl):
     if cmd.action == 'start':
-        bot_running = getattr(bot, 'running', True)
         bot.running = True
         return JSONResponse({"status": "bot started"})
-    elif cmd.action == 'stop':
+    if cmd.action == 'stop':
         bot.running = False
         return JSONResponse({"status": "bot stopped"})
     return JSONResponse({"error": "invalid action"}, status_code=400)
@@ -37,8 +35,7 @@ def get_status():
         "position": bot.position,
         "entry_price": bot.entry_price,
         "balance": float(next(
-            (b['balance'] for b in bot.client.futures_account_balance() if b['asset']=='USDT'),
-            0
+            (b['balance'] for b in bot.client.futures_account_balance() if b['asset']=='USDT'), 0
         ))
     }
 
@@ -53,30 +50,26 @@ async def websocket_logs(ws: WebSocket):
         clients.discard(ws)
 
 async def log_broadcaster():
-    last_index = 0
+    idx = 0
     while True:
-        new_logs = bot.trade_logs[last_index:]
-        for entry in new_logs:
+        new = bot.trade_logs[idx:]
+        for entry in new:
             payload = {
                 "log": entry,
                 "balance": float(next(
-                    (b['balance'] for b in bot.client.futures_account_balance() if b['asset']=='USDT'),
-                    0
+                    (b['balance'] for b in bot.client.futures_account_balance() if b['asset']=='USDT'), 0
                 )),
                 "position": bot.position,
                 "entry_price": bot.entry_price
             }
-            dead = []
-            for ws in clients:
+            for ws in list(clients):
                 try:
                     await ws.send_json(payload)
                 except:
-                    dead.append(ws)
-            for ws in dead:
-                clients.discard(ws)
-        last_index += len(new_logs)
+                    clients.discard(ws)
+        idx += len(new)
         await asyncio.sleep(1)
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT",8000)))
