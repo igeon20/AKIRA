@@ -10,40 +10,40 @@ from bot import BinanceBot
 # FastAPI 앱 생성
 app = FastAPI()
 
-# CORS 설정 (프론트엔드 도메인 허용)
+# CORS (필요한 origin만 설정하세요)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[os.getenv("CORS_ORIGINS", "*").split(",")],
+    allow_origins=[os.getenv("CORS_ORIGINS", "*") .split(",")],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 루트 엔드포인트 (GET/HEAD) - UptimeRobot용
+# Health-check (GET/HEAD) — UptimeRobot 등에서 OK 응답용
 @app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
 async def root():
     return {"message": "Trading Bot API is running"}
 
-# favicon 요청 응답 (빈 콘텐츠)
+# favicon 무응답
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
     return Response(status_code=204)
 
-# 봇 제어용 Pydantic 모델
+# 봇 제어 모델
 class BotControl(BaseModel):
-    action: str  # 'start' or 'stop'
+    action: str  # 'start' 또는 'stop'
 
-# 트레이딩 봇 인스턴스 생성
+# 봇 인스턴스와 WS 클라이언트 집합
 bot = BinanceBot()
-# WebSocket 클라이언트 집합
 clients: set[WebSocket] = set()
 
+# 서버 시작 시 봇·브로드캐스터 기동
 @app.on_event("startup")
 async def startup_event():
-    # 봇 실행 및 로그 브로드캐스터 시작
     asyncio.create_task(bot.run())
     asyncio.create_task(log_broadcaster())
 
+# 봇 시작/정지
 @app.post("/bot/control")
 async def control_bot(cmd: BotControl):
     if cmd.action == "start":
@@ -54,23 +54,30 @@ async def control_bot(cmd: BotControl):
         return JSONResponse({"status": "bot stopped"})
     return JSONResponse({"error": "invalid action"}, status_code=400)
 
+# 봇 상태 조회
 @app.get("/bot/status")
 async def get_status():
-    # 잔고 조회 (USDT)
     balance = float(next(
-        (b['balance'] for b in bot.client.futures_account_balance() if b['asset'] == 'USDT'),
+        (b["balance"] for b in bot.client.futures_account_balance() if b["asset"] == "USDT"),
         0
     ))
     return {
-        "running": getattr(bot, 'running', True),
+        "running": getattr(bot, "running", True),
         "position": bot.position,
         "entry_price": bot.entry_price,
         "balance": balance
     }
 
+# **전체 로그**를 처음 불러올 때
+@app.get("/bot/logs")
+async def get_logs():
+    # 뒤에서 100개만, 오래된 순으로 반환
+    logs = bot.trade_logs[-100:]
+    return {"logs": logs}
+
+# WebSocket—새 로그 발생 시마다 브로드캐스트
 @app.websocket("/ws/logs")
 async def websocket_logs(ws: WebSocket):
-    # 클라이언트 연결
     await ws.accept()
     clients.add(ws)
     try:
@@ -82,25 +89,29 @@ async def websocket_logs(ws: WebSocket):
 async def log_broadcaster():
     idx = 0
     while True:
-        new_logs = bot.trade_logs[idx:]
-        for entry in new_logs:
+        new = bot.trade_logs[idx:]
+        if new:
+            # 현재 잔고 조회
             balance = float(next(
-                (b['balance'] for b in bot.client.futures_account_balance() if b['asset'] == 'USDT'),
+                (b["balance"] for b in bot.client.futures_account_balance() if b["asset"] == "USDT"),
                 0
             ))
-            payload = {
-                "log": entry,
-                "balance": balance,
-                "position": bot.position,
-                "entry_price": bot.entry_price
-            }
-            # 모든 클라이언트에 전송
+            payloads = [
+                {
+                    "log": entry,
+                    "balance": balance,
+                    "position": bot.position,
+                    "entry_price": bot.entry_price
+                }
+                for entry in new
+            ]
             for ws in list(clients):
-                try:
-                    await ws.send_json(payload)
-                except:
-                    clients.discard(ws)
-        idx += len(new_logs)
+                for p in payloads:
+                    try:
+                        await ws.send_json(p)
+                    except:
+                        clients.discard(ws)
+        idx += len(new)
         await asyncio.sleep(1)
 
 if __name__ == "__main__":
