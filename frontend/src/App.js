@@ -1,7 +1,7 @@
 // src/App.js
 import React, { useState, useEffect, useRef } from "react";
 
-// ← 꼭 "./components/…" 경로로 수정하세요
+// ← 여기서부터 모두 components 폴더 아래를 가리킵니다.
 import BotControl    from "./components/BotControl";
 import BotStatus     from "./components/BotStatus";
 import BalanceStatus from "./components/BalanceStatus";
@@ -25,10 +25,10 @@ function App() {
   const wsRef = useRef(null);
 
   useEffect(() => {
-    // 봇 상태 가져오기
+    // 봇 상태
     fetch(`${window.location.protocol}//${HOST}/bot/status`)
-      .then((r) => r.json())
-      .then((d) => {
+      .then(r => r.json())
+      .then(d => {
         setIsRunning(d.running);
         setMetrics({
           balance: d.balance,
@@ -38,17 +38,17 @@ function App() {
       })
       .catch(console.error);
 
-    // 초기 로그 불러오기
+    // 초기 로그
     fetch(`${window.location.protocol}//${HOST}/bot/logs`)
-      .then((r) => r.json())
-      .then((d) => setLogs(d.logs))
+      .then(r => r.json())
+      .then(d => setLogs(d.logs))
       .catch(console.error);
 
-    // WebSocket 연결
+    // WS 연결
     wsRef.current = new WebSocket(`${PROTO}://${HOST}/ws/logs`);
-    wsRef.current.onmessage = (e) => {
+    wsRef.current.onmessage = e => {
       const d = JSON.parse(e.data);
-      setLogs((prev) => [...prev, d.log].slice(-100));
+      setLogs(prev => [...prev, d.log].slice(-100));
       setMetrics({
         balance: d.balance,
         position: d.position,
@@ -59,7 +59,7 @@ function App() {
     return () => wsRef.current.close();
   }, []);
 
-  const controlBot = (action) => {
+  const controlBot = action => {
     fetch(`${window.location.protocol}//${HOST}/bot/control`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -80,7 +80,10 @@ function App() {
         </span>
       </div>
 
-      <BotControl onStart={() => controlBot("start")} onStop={() => controlBot("stop")} />
+      <BotControl
+        onStart={() => controlBot("start")}
+        onStop={() => controlBot("stop")}
+      />
 
       <BalanceStatus
         initBalance={INIT_BALANCE}
@@ -92,7 +95,7 @@ function App() {
       <TradeLogs logs={logs} />
 
       <section className="chart-section">
-        {/* 차트 컴포넌트 삽입 예정 구역 */}
+        {/* 차트 컴포넌트 넣는 자리 */}
       </section>
     </div>
   );
