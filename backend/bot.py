@@ -60,10 +60,11 @@ class BinanceBot:
         self.entry_qty   = 0
         self.trade_logs  = []
 
-        # **추가**: 봇 실행/정지 플래그
+        # 봇 실행/정지 플래그
         self.running = False
 
     def _on_ticker(self, msg):
+        # WS로 받은 틱 데이터를 최신화
         try:
             p = float(msg['c'])
             self.price = round(p, self.PRICE_PRECISION)
@@ -141,6 +142,7 @@ class BinanceBot:
         tp = round(self.price * (1 + self.TP_PCT * (1 if side=='BUY' else -1)), self.PRICE_PRECISION)
         sl = round(self.price * (1 + self.SL_PCT * (1 if side=='BUY' else -1)), self.PRICE_PRECISION)
 
+        # T/P 주문
         await self._retry_order(
             self.client.futures_create_order,
             symbol=self.SYMBOL,
@@ -151,6 +153,7 @@ class BinanceBot:
             price=tp,
             reduceOnly=True
         )
+        # S/L 주문
         await self._retry_order(
             self.client.futures_create_order,
             symbol=self.SYMBOL,
@@ -162,11 +165,10 @@ class BinanceBot:
         )
 
     async def monitor(self):
-        # WS 구독
+        # WS 구독 시작
         self._start_ws()
         while True:
             if self.running and self.price is not None:
-                # 최소한 가격 로그라도 남겨서 프론트에서 보이도록 처리
                 msg = f"현재가: {self.price}"
                 logger.info(msg)
                 self.trade_logs.append(msg)
