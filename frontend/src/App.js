@@ -1,10 +1,11 @@
-// src/App.js
 import React, { useState, useEffect, useRef } from "react";
 import BalanceStatus from "./components/BalanceStatus";
 import BotStatus from "./components/BotStatus";
 import "./App.css";
 
 const INIT_BALANCE = parseFloat(process.env.REACT_APP_INIT_BALANCE) || 50;
+const HOST = process.env.REACT_APP_API_HOST || window.location.host;
+const PROTO = window.location.protocol === "https:" ? "wss" : "ws";
 
 function App() {
   const [logs, setLogs] = useState([]);
@@ -15,56 +16,47 @@ function App() {
   });
   const [isRunning, setIsRunning] = useState(false);
   const wsRef = useRef(null);
-  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-  const host = process.env.REACT_APP_API_HOST || window.location.host;
 
   useEffect(() => {
-    // 초기 상태 조회
-    fetch(`${window.location.protocol}//${host}/bot/status`)
-      .then((res) => res.json())
-      .then((data) => {
-        setIsRunning(data.running);
-        setMetrics({
-          balance: data.balance,
-          position: data.position,
-          entry_price: data.entry_price,
-        });
+    // 1) 초기 상태 + 초기 로그 로드
+    fetch(`${window.location.protocol}//${HOST}/bot/status`)
+      .then((r) => r.json())
+      .then((d) => {
+        setIsRunning(d.running);
+        setMetrics({ balance: d.balance, position: d.position, entry_price: d.entry_price });
       });
 
-    // WebSocket 연결 (로그 & 지표 자동 업데이트)
-    wsRef.current = new WebSocket(`${protocol}://${host}/ws/logs`);
-    wsRef.current.onmessage = (event) => {
+    fetch(`${window.location.protocol}//${HOST}/bot/logs`)
+      .then((r) => r.json())
+      .then((d) => {
+        // 오래된 순서 그대로 보여줌
+        setLogs(d.logs);
+      });
+
+    // 2) WebSocket 연결 — 새 로그만 추가
+    wsRef.current = new WebSocket(`${PROTO}://${HOST}/ws/logs`);
+    wsRef.current.onmessage = (e) => {
       try {
-        const d = JSON.parse(event.data);
-        setLogs((prev) => [d.log, ...prev].slice(0, 100));
-        setMetrics({
-          balance: d.balance,
-          position: d.position,
-          entry_price: d.entry_price,
-        });
-      } catch (e) {
-        console.error("Invalid WS message", e);
+        const d = JSON.parse(e.data);
+        // 가장 뒤(최신)에 붙이기
+        setLogs((prev) => [...prev, d.log].slice(-100));
+        setMetrics({ balance: d.balance, position: d.position, entry_price: d.entry_price });
+      } catch (err) {
+        console.error("WS message parse error", err);
       }
     };
     wsRef.current.onclose = () => console.warn("WS closed");
-    wsRef.current.onerror = (e) => console.error("WS error", e);
+    wsRef.current.onerror = (err) => console.error("WS error", err);
 
-    return () => wsRef.current && wsRef.current.close();
-  }, [host, protocol]);
+    return () => wsRef.current.close();
+  }, []);
 
-  const handleStart = () => {
-    fetch(`${window.location.protocol}//${host}/bot/control`, {
+  const controlBot = (action) => {
+    fetch(`${window.location.protocol}//${HOST}/bot/control`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "start" }),
-    }).then(() => setIsRunning(true));
-  };
-  const handleStop = () => {
-    fetch(`${window.location.protocol}//${host}/bot/control`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "stop" }),
-    }).then(() => setIsRunning(false));
+      body: JSON.stringify({ action }),
+    }).then(() => setIsRunning(action === "start"));
   };
 
   return (
@@ -75,8 +67,8 @@ function App() {
       <main>
         <BotStatus
           isRunning={isRunning}
-          onStart={handleStart}
-          onStop={handleStop}
+          onStart={() => controlBot("start")}
+          onStop={() => controlBot("stop")}
         />
         <BalanceStatus
           initBalance={INIT_BALANCE}
