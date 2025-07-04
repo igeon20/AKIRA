@@ -1,4 +1,3 @@
-# bot.py
 import os
 import asyncio
 import logging
@@ -9,10 +8,8 @@ from binance.exceptions import BinanceAPIException
 from binance import ThreadedWebsocketManager
 import ta
 
-# 환경변수 로드
 load_dotenv()
 
-# 로깅 설정
 logging.basicConfig(
     level=logging.INFO,
     format='[%(asctime)s] %(message)s',
@@ -28,20 +25,16 @@ class BinanceBot:
     SYMBOL = os.getenv('SYMBOL', 'BTCUSDT')
     PRICE_PRECISION = 2
     QTY_PRECISION = 3
-
     LEVERAGE = int(os.getenv('LEVERAGE', 125))
     RISK_PER_TRADE = float(os.getenv('RISK_PER_TRADE', 0.01))
-
-    TP_PCT = float(os.getenv('TP_PCT', 0.008))   # 0.8%
-    SL_PCT = float(os.getenv('SL_PCT', -0.04))   # -4%
-
+    TP_PCT = float(os.getenv('TP_PCT', 0.008))
+    SL_PCT = float(os.getenv('SL_PCT', -0.04))
     MAX_RETRIES = 5
-    BACKOFF_INITIAL = 1  # seconds
-
+    BACKOFF_INITIAL = 1
     ATR_WINDOW = 14
 
     def __init__(self):
-        # REST 클라이언트 설정
+        # REST & WS 클라이언트 세팅
         self.client = Client(
             api_key=os.getenv('BINANCE_API_KEY'),
             api_secret=os.getenv('BINANCE_SECRET_KEY'),
@@ -50,7 +43,6 @@ class BinanceBot:
         self.client.API_URL = os.getenv('BINANCE_BASE_URL')
         self.client.futures_change_leverage(symbol=self.SYMBOL, leverage=self.LEVERAGE)
 
-        # WebSocket 매니저 초기화 및 시작
         self.bm = ThreadedWebsocketManager(
             api_key=os.getenv('BINANCE_API_KEY'),
             api_secret=os.getenv('BINANCE_SECRET_KEY'),
@@ -58,19 +50,18 @@ class BinanceBot:
         )
         self.bm.start()
 
-        # 가격 및 ATR용 버퍼
+        # 버퍼 및 상태
         self.price = None
         self.highs  = deque(maxlen=self.ATR_WINDOW + 1)
         self.lows   = deque(maxlen=self.ATR_WINDOW + 1)
         self.closes = deque(maxlen=self.ATR_WINDOW + 1)
-
-        # 포지션 상태
         self.position    = 0
         self.entry_price = None
         self.entry_qty   = 0
-
-        # 로그 저장소
         self.trade_logs  = []
+
+        # **추가**: 봇 실행/정지 플래그
+        self.running = False
 
     def _on_ticker(self, msg):
         try:
@@ -83,7 +74,6 @@ class BinanceBot:
             pass
 
     def _start_ws(self):
-        # multiplex 방식으로 futures 단일 심볼 티커 구독
         stream = f"{self.SYMBOL.lower()}@ticker"
         self.bm.start_futures_multiplex_socket(
             callback=self._on_ticker,
@@ -131,7 +121,6 @@ class BinanceBot:
         if qty <= 0 or not self.price:
             return
 
-        # 시장가 진입
         order = await self._retry_order(
             self.client.futures_create_order,
             symbol=self.SYMBOL,
@@ -152,7 +141,6 @@ class BinanceBot:
         tp = round(self.price * (1 + self.TP_PCT * (1 if side=='BUY' else -1)), self.PRICE_PRECISION)
         sl = round(self.price * (1 + self.SL_PCT * (1 if side=='BUY' else -1)), self.PRICE_PRECISION)
 
-        # TP Limit
         await self._retry_order(
             self.client.futures_create_order,
             symbol=self.SYMBOL,
@@ -163,7 +151,6 @@ class BinanceBot:
             price=tp,
             reduceOnly=True
         )
-        # SL Stop Market
         await self._retry_order(
             self.client.futures_create_order,
             symbol=self.SYMBOL,
@@ -175,10 +162,14 @@ class BinanceBot:
         )
 
     async def monitor(self):
-        # WebSocket 구독 시작
+        # WS 구독
         self._start_ws()
         while True:
-            # 여기에 진입/청산 전략 로직 추가
+            if self.running and self.price is not None:
+                # 최소한 가격 로그라도 남겨서 프론트에서 보이도록 처리
+                msg = f"현재가: {self.price}"
+                logger.info(msg)
+                self.trade_logs.append(msg)
             await asyncio.sleep(1)
 
     async def run(self):
