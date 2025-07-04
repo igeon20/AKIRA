@@ -1,7 +1,6 @@
-// frontend/src/App.js
 import React, { useState, useEffect, useRef } from "react";
 
-// components 디렉토리 아래에서 정확히 불러오기
+// 반드시 components 폴더 아래에서 불러옵니다
 import BotControl    from "./components/BotControl";
 import BotStatus     from "./components/BotStatus";
 import BalanceStatus from "./components/BalanceStatus";
@@ -25,10 +24,10 @@ function App() {
   const wsRef = useRef(null);
 
   useEffect(() => {
-    // 1) 봇 상태 로드
+    // 초기 상태 & 로그 로드
     fetch(`${window.location.protocol}//${HOST}/bot/status`)
-      .then((r) => r.json())
-      .then((d) => {
+      .then(res => res.json())
+      .then(d => {
         setIsRunning(d.running);
         setMetrics({
           balance: d.balance,
@@ -38,17 +37,16 @@ function App() {
       })
       .catch(console.error);
 
-    // 2) 초기 로그 로드
     fetch(`${window.location.protocol}//${HOST}/bot/logs`)
-      .then((r) => r.json())
-      .then((d) => setLogs(d.logs))
+      .then(res => res.json())
+      .then(d => setLogs(d.logs))
       .catch(console.error);
 
-    // 3) WebSocket 설정
+    // WebSocket 연결 (새 로그 수신)
     wsRef.current = new WebSocket(`${PROTO}://${HOST}/ws/logs`);
-    wsRef.current.onmessage = (e) => {
+    wsRef.current.onmessage = e => {
       const d = JSON.parse(e.data);
-      setLogs((prev) => [...prev, d.log].slice(-100));
+      setLogs(prev => [...prev, d.log].slice(-100));
       setMetrics({
         balance: d.balance,
         position: d.position,
@@ -59,13 +57,16 @@ function App() {
     return () => wsRef.current.close();
   }, []);
 
-  const controlBot = (action) => {
+  const controlBot = action => {
     fetch(`${window.location.protocol}//${HOST}/bot/control`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action }),
     })
-      .then(() => setIsRunning(action === "start"))
+      .then(res => {
+        if (!res.ok) throw new Error("control failed");
+        setIsRunning(action === "start");
+      })
       .catch(console.error);
   };
 
@@ -95,7 +96,7 @@ function App() {
       <TradeLogs logs={logs} />
 
       <section className="chart-section">
-        {/* 차트 컴포넌트 삽입 예정 */}
+        {/* 차트 컴포넌트 추가 예정 */}
       </section>
     </div>
   );
