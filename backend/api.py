@@ -2,13 +2,13 @@ import os
 import asyncio
 import logging
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.websockets import WebSocketDisconnect, WebSocket
 from pydantic import BaseModel
 from bot import BinanceBot
 
-# 로깅
+# 로깅 설정
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger()
 
@@ -30,7 +30,6 @@ clients: set[WebSocket] = set()
 
 @app.on_event("startup")
 async def startup_event():
-    # 봇·로그 브로드캐스터 기동
     asyncio.create_task(bot.run())
     asyncio.create_task(log_broadcaster())
 
@@ -48,7 +47,6 @@ async def control_bot(cmd: BotControl):
         return JSONResponse({"status": "bot stopped"})
     return JSONResponse({"error": "invalid action"}, status_code=400)
 
-# **alias**: 프론트가 /bot/start, /bot/stop 호출 시 대응
 @app.post("/bot/start")
 async def start_bot():
     bot.running = True
@@ -120,4 +118,13 @@ async def log_broadcaster():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
+    # h11 버퍼 크기를 기본 16KB -> 64KB로 확대하여 헤더 패킷을 안정적으로 처리
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=int(os.getenv("PORT", 8000)),
+        http="h11",
+        h11_max_incomplete_event_size=65536,
+        limit_concurrency=100,
+        timeout_keep_alive=5
+    )
