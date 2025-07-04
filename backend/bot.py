@@ -19,10 +19,9 @@ class BinanceBot:
     FEE = 0.0004
 
     INIT_BALANCE = 50.0
-    TP = 0.08   # 목표 8% 익절
-    SL = -0.04  # 목표 4% 손절
+    TP = 0.008   # 목표 0.8% 익절
+    SL = -0.004  # 목표 0.4% 손절
 
-    # AI 모델/피처 경로 설정 (bot.py 위치 기준)
     BASE_DIR = os.path.dirname(__file__)
     AI_MODEL_PATH = os.path.join(BASE_DIR, "ai_model", "ai_model.pkl")
     FEATURE_CONFIG_PATH = os.path.join(BASE_DIR, "ai_model", "feature_config.json")
@@ -48,7 +47,6 @@ class BinanceBot:
         self.running = False
         self.trade_logs = []
 
-        # AI 모델 로드
         if os.path.exists(self.AI_MODEL_PATH) and os.path.exists(self.FEATURE_CONFIG_PATH):
             try:
                 self.AI_MODEL = joblib.load(self.AI_MODEL_PATH)
@@ -61,7 +59,6 @@ class BinanceBot:
             self.AI_MODEL = None
             self.FEATURE_COLS = []
 
-        # 레버리지 설정 (얼리러닝 에러 스킵)
         try:
             self.client.futures_change_leverage(symbol=self.SYMBOL, leverage=self.LEVERAGE)
         except Exception:
@@ -74,7 +71,8 @@ class BinanceBot:
         self.trade_logs.append(entry)
 
     def align_to_tick(self, price):
-        return round(round(price / 0.1) * 0.1, self.PRICE_PRECISION)
+        tick_size = 1 / (10 ** self.PRICE_PRECISION)
+        return round(round(price / tick_size) * tick_size, self.PRICE_PRECISION)
 
     def start_bot(self):
         self.running = True
@@ -91,17 +89,19 @@ class BinanceBot:
                     time.sleep(5)
                     continue
 
+                # RSI·Whale 필터, AI 시그널
                 rsi = df['rsi'].iloc[-1]
                 vol = df['volume'].iloc[-1]
                 vol_ma = df['vol_ma5'].iloc[-1]
                 whale = vol > vol_ma * 1.03
                 ai_sig = self.get_ai_signal(df)
 
-                # TP/SL 자동 관리
+                # TP/SL 관리
                 if self.manage_position(price):
                     time.sleep(1)
                     continue
 
+                # 진입 조건
                 enter_long = (ai_sig == 1)
                 enter_short = (ai_sig == -1)
                 if self.USE_RSI_FILTER:
@@ -111,10 +111,8 @@ class BinanceBot:
                     enter_long &= whale
                     enter_short &= whale
 
-                # 롱 진입
                 if enter_long and self.position == 0:
                     self._trade('BUY', price, '롱 진입')
-                # 숏 진입
                 elif enter_short and self.position == 0:
                     self._trade('SELL', price, '숏 진입')
 
@@ -167,24 +165,22 @@ class BinanceBot:
             return
         order_price = self.align_to_tick(price * (0.999 if side == 'BUY' else 1.001))
         try:
+            # MARKET 주문으로 즉시 체결
             self.client.futures_create_order(
                 symbol=self.SYMBOL,
                 side=side,
-                type='LIMIT',
-                timeInForce='GTC',
-                price=order_price,
+                type='MARKET',
                 quantity=qty
             )
             self.position = 1 if side == 'BUY' else -1
             self.entry_price = order_price
             self.last_qty = qty
+            # 진입 수수료만 저장
             commission = order_price * qty * self.FEE / 2
-            self.balance -= commission
-            self._log(f"{label}: 가격={order_price}, 수량={qty}, 수수료={commission:.4f}")
+            self.entry_commission = commission
+            self._log(f"{label}: 가격={order_price}, 수량={qty}, 예상 수수료={commission:.4f}")
         except BinanceAPIException as e:
-            if e.code == -2027:
-                return
-            else:
+            if e.code != -2027:
                 self._log(f"[오류] {label} 실패: {e}")
 
     def close_position(self, price, reason=""):
@@ -192,28 +188,30 @@ class BinanceBot:
             return
         closing_label = '롱 청산' if self.position == 1 else '숏 청산'
         side = 'SELL' if self.position == 1 else 'BUY'
-        order_price = self.align_to_tick(price * (1.001 if side == 'SELL' else 0.999))
         try:
             self.client.futures_create_order(
                 symbol=self.SYMBOL,
                 side=side,
-                type='LIMIT',
-                timeInForce='GTC',
-                price=order_price,
+                type='MARKET',
                 quantity=self.last_qty
             )
-            pnl_raw = ((order_price - self.entry_price) if self.position == 1 else
-                       (self.entry_price - order_price)) * self.last_qty
-            commission = order_price * self.last_qty * self.FEE / 2
-            net_pnl = pnl_raw - (self.entry_commission + commission)
+            executed_price = self.get_price()
+            order_price = self.align_to_tick(executed_price)
+            # PnL 계산
+            if self.position == 1:
+                raw_pnl = (order_price - self.entry_price) * self.last_qty
+            else:
+                raw_pnl = (self.entry_price - order_price) * self.last_qty
+            closing_commission = order_price * self.last_qty * self.FEE / 2
+            # 진입+청산 수수료를 합산 차감
+            net_pnl = raw_pnl - (self.entry_commission + closing_commission)
             self.balance += net_pnl
             self._log(f"{closing_label}({reason}): 가격={order_price}, 순PnL={net_pnl:.4f}, 잔고={self.balance:.2f}")
         except BinanceAPIException as e:
-            if e.code == -2027:
-                return
-            else:
+            if e.code != -2027:
                 self._log(f"[오류] {closing_label} 실패: {e}")
         finally:
+            # 상태 초기화
             self.position = 0
             self.entry_price = None
             self.entry_commission = 0
@@ -222,14 +220,17 @@ class BinanceBot:
     def manage_position(self, price):
         if self.position == 0:
             return False
-        pnl_rate = ((price - self.entry_price) / self.entry_price
-                    if self.position == 1
-                    else (self.entry_price - price) / self.entry_price)
-        if pnl_rate >= self.TP:
+        # 현재 수익률(%)
+        if self.position == 1:
+            pnl_pct = (price - self.entry_price) / self.entry_price
+        else:
+            pnl_pct = (self.entry_price - price) / self.entry_price
+        self._log(f"현재 PnL%: {pnl_pct:.4%} (TP {self.TP:.2%}, SL {self.SL:.2%})")
+        # TP 또는 SL 조건
+        if pnl_pct >= self.TP:
             self.close_position(price, "TP")
             return True
-        if pnl_rate <= self.SL:
+        if pnl_pct <= self.SL:
             self.close_position(price, "SL")
             return True
         return False
-
