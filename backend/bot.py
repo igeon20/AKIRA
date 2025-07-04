@@ -1,11 +1,12 @@
 import os
 import asyncio
 import logging
+import threading
 from collections import deque
 from dotenv import load_dotenv
 from binance.client import Client
 from binance.exceptions import BinanceAPIException
-from binance import ThreadedWebsocketManager  # 수정된 WebSocket 매니저 import
+from binance import ThreadedWebsocketManager
 
 import ta
 
@@ -36,12 +37,11 @@ class BinanceBot:
     SL_PCT = float(os.getenv('SL_PCT', -0.04))   # -4%
 
     MAX_RETRIES = 5
-    BACKOFF_INITIAL = 1  # seconds
+    BACKOFF_INITIAL = 1
 
     ATR_WINDOW = 14
 
     def __init__(self):
-        # REST 클라이언트
         self.client = Client(
             api_key=os.getenv('BINANCE_API_KEY'),
             api_secret=os.getenv('BINANCE_SECRET_KEY'),
@@ -50,7 +50,6 @@ class BinanceBot:
         self.client.API_URL = os.getenv('BINANCE_BASE_URL')
         self.client.futures_change_leverage(symbol=self.SYMBOL, leverage=self.LEVERAGE)
 
-        # ThreadedWebsocketManager 사용
         self.bm = ThreadedWebsocketManager(
             api_key=os.getenv('BINANCE_API_KEY'),
             api_secret=os.getenv('BINANCE_SECRET_KEY'),
@@ -58,7 +57,6 @@ class BinanceBot:
         )
         self.price = None
 
-        # ATR용 과거 데이터
         self.highs  = deque(maxlen=self.ATR_WINDOW + 1)
         self.lows   = deque(maxlen=self.ATR_WINDOW + 1)
         self.closes = deque(maxlen=self.ATR_WINDOW + 1)
@@ -68,31 +66,39 @@ class BinanceBot:
         self.entry_qty   = 0
         self.trade_logs  = []
 
-    def _start_ws(self):
-        # futures용 ticker socket
-        self.bm.start()
-        self.bm.start_futures_symbol_ticker_socket(
-            symbol=self.SYMBOL,
-            callback=self._on_ticker
-        )
-
     def _on_ticker(self, msg):
         try:
-            price = float(msg['c'])
-            self.price = round(price, self.PRICE_PRECISION)
+            p = float(msg['c'])
+            self.price = round(p, self.PRICE_PRECISION)
             self.highs.append(float(msg['h']))
             self.lows.append(float(msg['l']))
             self.closes.append(float(msg['c']))
         except Exception:
             pass
 
+    def _start_ws(self):
+        # WebSocket Manager를 별도 스레드로 실행
+        t = threading.Thread(target=self.bm.start, daemon=True)
+        t.start()
+        # Futures 개별 심볼 티커 구독
+        self.bm.start_symbol_ticker_futures_socket(
+            symbol=self.SYMBOL,
+            callback=self._on_ticker
+        )
+
     def calc_atr(self):
         if len(self.highs) < self.ATR_WINDOW + 1:
             return None
-        h, l, c = list(self.highs), list(self.lows), list(self.closes)
-        atr_series = ta.trend.ATRIndicator(high=h, low=l, close=c, window=self.ATR_WINDOW).atr()
-        atr_clean = atr_series.dropna()
-        return atr_clean.iloc[-1] if not atr_clean.empty else None
+        df = {
+            'high': list(self.highs),
+            'low': list(self.lows),
+            'close': list(self.closes)
+        }
+        atr_series = ta.trend.ATRIndicator(
+            high=df['high'], low=df['low'], close=df['close'], window=self.ATR_WINDOW
+        ).atr()
+        cleaned = atr_series.dropna()
+        return cleaned.iloc[-1] if not cleaned.empty else None
 
     def calc_qty(self):
         usdt_bal = float(next(
@@ -116,14 +122,13 @@ class BinanceBot:
                 logger.warning(f"Order failed (code {e.code}), retry {attempt+1}/{self.MAX_RETRIES} after {backoff}s")
                 await asyncio.sleep(backoff)
                 backoff *= 2
-        logger.error("Max retries reached, order aborted.")
+        logger.error("Max retries reached.")
         return None
 
     async def enter_position(self, side):
         qty = self.calc_qty()
         if qty <= 0:
             return
-        # MARKET으로 빠른 진입
         order = await self._retry_order(
             self.client.futures_create_order,
             symbol=self.SYMBOL,
@@ -133,16 +138,15 @@ class BinanceBot:
         )
         if not order:
             return
-        self.position    = 1 if side=='BUY' else -1
+        self.position    = 1 if side == 'BUY' else -1
         self.entry_price = self.price
         self.entry_qty   = qty
-        log_msg = f"Entered {side}: price={self.price}, qty={qty}"
-        logger.info(log_msg)
-        self.trade_logs.append(log_msg)
+        msg = f"Entered {side}: price={self.price}, qty={qty}"
+        logger.info(msg)
+        self.trade_logs.append(msg)
 
-        # TP / SL bracket
-        tp_price = round(self.price * (1 + self.TP_PCT * (1 if side=='BUY' else -1)), self.PRICE_PRECISION)
-        sl_price = round(self.price * (1 + self.SL_PCT * (1 if side=='BUY' else -1)), self.PRICE_PRECISION)
+        tp = round(self.price * (1 + self.TP_PCT * (1 if side=='BUY' else -1)), self.PRICE_PRECISION)
+        sl = round(self.price * (1 + self.SL_PCT * (1 if side=='BUY' else -1)), self.PRICE_PRECISION)
         await self._retry_order(
             self.client.futures_create_order,
             symbol=self.SYMBOL,
@@ -150,7 +154,7 @@ class BinanceBot:
             type='LIMIT',
             timeInForce='GTC',
             quantity=qty,
-            price=tp_price,
+            price=tp,
             reduceOnly=True
         )
         await self._retry_order(
@@ -158,19 +162,20 @@ class BinanceBot:
             symbol=self.SYMBOL,
             side=('SELL' if side=='BUY' else 'BUY'),
             type='STOP_MARKET',
-            stopPrice=sl_price,
+            stopPrice=sl,
             quantity=qty,
             reduceOnly=True
         )
 
     async def monitor(self):
+        # WebSocket 구독 시작
+        self._start_ws()
         while True:
-            # 진입/청산 로직 위치
+            # 전략 진입/청산 로직 위치
             await asyncio.sleep(1)
 
     async def run(self):
-        self._start_ws()
-        await asyncio.gather(self.monitor())
+        await self.monitor()
 
 if __name__ == '__main__':
     bot = BinanceBot()
