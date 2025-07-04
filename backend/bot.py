@@ -19,8 +19,8 @@ class BinanceBot:
     FEE = 0.0004
 
     INIT_BALANCE = 50.0
-    TP = 0.008   # 목표 0.8% 익절
-    SL = -0.004  # 목표 0.4% 손절
+    TP = 0.08   # 목표 0.8% 익절
+    SL = -0.04  # 목표 0.4% 손절
 
     BASE_DIR = os.path.dirname(__file__)
     AI_MODEL_PATH = os.path.join(BASE_DIR, "ai_model", "ai_model.pkl")
