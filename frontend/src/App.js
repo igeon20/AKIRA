@@ -1,6 +1,7 @@
+// frontend/src/App.js
 import React, { useState, useEffect, useRef } from "react";
 
-// 반드시 components 폴더 아래에서 불러옵니다
+// ↓ components 폴더에서 정확히 불러오기
 import BotControl    from "./components/BotControl";
 import BotStatus     from "./components/BotStatus";
 import BalanceStatus from "./components/BalanceStatus";
@@ -24,34 +25,27 @@ function App() {
   const wsRef = useRef(null);
 
   useEffect(() => {
-    // 초기 상태 & 로그 로드
+    // 봇 상태 불러오기
     fetch(`${window.location.protocol}//${HOST}/bot/status`)
-      .then(res => res.json())
+      .then(r => r.json())
       .then(d => {
         setIsRunning(d.running);
-        setMetrics({
-          balance: d.balance,
-          position: d.position,
-          entry_price: d.entry_price,
-        });
+        setMetrics({ balance: d.balance, position: d.position, entry_price: d.entry_price });
       })
       .catch(console.error);
 
+    // 초기 로그 불러오기
     fetch(`${window.location.protocol}//${HOST}/bot/logs`)
-      .then(res => res.json())
+      .then(r => r.json())
       .then(d => setLogs(d.logs))
       .catch(console.error);
 
-    // WebSocket 연결 (새 로그 수신)
+    // WebSocket 연결
     wsRef.current = new WebSocket(`${PROTO}://${HOST}/ws/logs`);
     wsRef.current.onmessage = e => {
       const d = JSON.parse(e.data);
       setLogs(prev => [...prev, d.log].slice(-100));
-      setMetrics({
-        balance: d.balance,
-        position: d.position,
-        entry_price: d.entry_price,
-      });
+      setMetrics({ balance: d.balance, position: d.position, entry_price: d.entry_price });
     };
     wsRef.current.onerror = console.error;
     return () => wsRef.current.close();
@@ -63,10 +57,7 @@ function App() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action }),
     })
-      .then(res => {
-        if (!res.ok) throw new Error("control failed");
-        setIsRunning(action === "start");
-      })
+      .then(res => { if (!res.ok) throw new Error("control error"); setIsRunning(action === "start"); })
       .catch(console.error);
   };
 
@@ -81,10 +72,7 @@ function App() {
         </span>
       </div>
 
-      <BotControl
-        onStart={() => controlBot("start")}
-        onStop={() => controlBot("stop")}
-      />
+      <BotControl onStart={() => controlBot("start")} onStop={() => controlBot("stop")} />
 
       <BalanceStatus
         initBalance={INIT_BALANCE}
@@ -96,7 +84,7 @@ function App() {
       <TradeLogs logs={logs} />
 
       <section className="chart-section">
-        {/* 차트 컴포넌트 추가 예정 */}
+        {/* 여기에 차트 컴포넌트 삽입 */}
       </section>
     </div>
   );
