@@ -1,8 +1,11 @@
+// src/components/Gear.jsx
 import React from 'react';
-import { ReactComponent as GearIcon } from './gear.svg'; // SVG 파일이 있는 경우
+import { ReactComponent as GearIcon } from './gear.svg';
 
-const Gear = () => (
-  <div className="gear-icon">
+const Gear = ({ spinning }) => (
+  <div className={'gear-icon' + (spinning ? ' spinning' : '')}>
     <GearIcon width={24} height={24} />
   </div>
 );
+
+export default Gear;
