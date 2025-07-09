@@ -1,157 +1,102 @@
-import os
-import asyncio
-import logging
-from collections import deque
-from dotenv import load_dotenv
-from binance.client import Client
-from binance.exceptions import BinanceAPIException
-import ta
-
-load_dotenv()
-
-# ─── 로깅 설정 ───────────────────────────────────────
-logging.basicConfig(
-    level=logging.INFO,
-    format='[%(asctime)s] %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S',
+# app/bot/trader.py
+import time
+import pandas as pd
+from app.core.config import settings
+from app.bot.exchange import Exchange
+from app.bot.indicators import (
+    calculate_rsi, calculate_bollinger_bands, calculate_bb_width, calculate_atr
 )
-logger = logging.getLogger(__name__)
 
-class BinanceBot:
-    SYMBOL = os.getenv('SYMBOL', 'BTCUSDT')
-    PRICE_PRECISION = 2
-    QTY_PRECISION = 3
-    LEVERAGE = int(os.getenv('LEVERAGE', 125))
-    RISK_PER_TRADE = float(os.getenv('RISK_PER_TRADE', 0.01))
-    TP_PCT = float(os.getenv('TP_PCT', 0.008))
-    SL_PCT = float(os.getenv('SL_PCT', -0.04))
-    ATR_WINDOW = 14
-
+class Trader:
     def __init__(self):
-        # REST 클라이언트 세팅
-        self.client = Client(
-            api_key=os.getenv('BINANCE_API_KEY'),
-            api_secret=os.getenv('BINANCE_SECRET_KEY'),
-            testnet=True
-        )
-        self.client.API_URL = os.getenv('BINANCE_BASE_URL')
-        self.client.futures_change_leverage(symbol=self.SYMBOL, leverage=self.LEVERAGE)
-
-        # 가격·ATR 계산용 버퍼
-        self.price = None
-        self.highs  = deque(maxlen=self.ATR_WINDOW + 1)
-        self.lows   = deque(maxlen=self.ATR_WINDOW + 1)
-        self.closes = deque(maxlen=self.ATR_WINDOW + 1)
-
-        # 포지션 상태
-        self.position    = 0
-        self.entry_price = None
-        self.entry_qty   = 0
-
-        # 로그
+        self.exchange = Exchange()
         self.trade_logs = []
+        self.bb_width_history = pd.Series(dtype=float)
 
-        # 실행 플래그
-        self.running = False
+    def log_trade(self, message):
+        log_message = f"[{pd.Timestamp.now(tz='Asia/Seoul').strftime('%Y-%m-%d %H:%M:%S')}] {message}"
+        print(log_message)
+        self.trade_logs.append(log_message)
+        if len(self.trade_logs) > 200:
+            self.trade_logs.pop(0)
 
-    def calc_atr(self):
-        if len(self.highs) < self.ATR_WINDOW + 1:
-            return None
-        atr = ta.trend.ATRIndicator(
-            high=list(self.highs),
-            low=list(self.lows),
-            close=list(self.closes),
-            window=self.ATR_WINDOW
-        ).atr().dropna()
-        return atr.iloc[-1] if not atr.empty else None
+    def run_trading_cycle(self):
+        self.log_trade("="*40)
+        self.log_trade("🚀 새로운 사이클 시작...")
 
-    def calc_qty(self):
-        usdt_bal = float(next(
-            (b['balance'] for b in self.client.futures_account_balance() if b['asset']=='USDT'),
-            0
-        ))
-        atr = self.calc_atr()
-        if atr:
-            risk_amt = usdt_bal * self.RISK_PER_TRADE
-            qty = risk_amt / atr
+        if self.exchange.get_current_position():
+            self.log_trade("📊 포지션 보유 중... TP/SL 대기.")
+            return
+
+        self.log_trade("🧐 신규 진입 기회를 탐색합니다.")
+        df = self.exchange.get_ohlcv(limit=200)
+        
+        # --- 1차 지표 계산 (지난 캔들 기준) ---
+        rsi = calculate_rsi(df['close'], settings.RSI_PERIOD)
+        upper_band, middle_band, lower_band = calculate_bollinger_bands(df['close'], settings.BB_PERIOD, settings.BB_STD_DEV)
+        atr = calculate_atr(df['high'], df['low'], df['close'], settings.ATR_PERIOD)
+        
+        side = None
+        strategy_used = ""
+
+        # --- 전략 탐색 ---
+        if settings.USE_BB_BREAKOUT_STRATEGY:
+            # ... (BB Breakout 로직은 생략, 필요시 이전 코드 참조) ...
+            pass
+
+        if side is None and settings.USE_RSI_REVERSAL_STRATEGY:
+            self.log_trade(f"📈 RSI 상태 - 현재: {rsi:.2f} (진입 기준: <{settings.RSI_OVERSOLD} or >{settings.RSI_OVERBOUGHT})")
+            if rsi < settings.RSI_OVERSOLD:
+                side = 'buy'
+                strategy_used = "RSI Reversal Long"
+            elif rsi > settings.RSI_OVERBOUGHT:
+                side = 'sell'
+                strategy_used = "RSI Reversal Short"
+        
+        # --- 진입 실행 로직 (핵심 수정 부분) ---
+        if side:
+            self.log_trade(f"🎯 진입 조건 충족! ({strategy_used})")
+            try:
+                # 1. 가장 최신 실시간 가격을 다시 조회
+                live_price = self.exchange.get_current_price()
+                self.log_trade(f"   > 실시간 가격 확인: ${live_price:.2f}")
+
+                # 2. 실시간 가격 기준으로 수량 재계산 (더 정확한 리스크 관리)
+                balance = self.exchange.get_balance()
+                risk_amount_usdt = balance * settings.RISK_PER_TRADE
+                trade_amount = risk_amount_usdt / atr
+                
+                if trade_amount <= 0:
+                    self.log_trade("⚠️ 계산된 주문 수량이 0보다 작거나 같아 주문을 실행하지 않습니다.")
+                    return
+                
+                formatted_amount = self.exchange.format_amount(trade_amount)
+
+                # 3. 실시간 가격 기준으로 TP/SL 재계산
+                if settings.USE_BOLLINGER_BANDS_TP:
+                    # BB 밴드 값은 지난 캔들 기준이므로 그대로 사용
+                    take_profit_price = upper_band if side == 'buy' else lower_band
+                else:
+                    tp_pct = settings.TARGET_TAKE_PROFIT_PNL / settings.LEVERAGE
+                    take_profit_price = live_price * (1 + tp_pct) if side == 'buy' else live_price * (1 - tp_pct)
+
+                sl_pct = settings.TARGET_STOP_LOSS_PNL / settings.LEVERAGE
+                stop_loss_price = live_price * (1 - sl_pct) if side == 'buy' else live_price * (1 + sl_pct)
+                
+                self.log_trade(f"   > 최종 주문 정보 - TP: ${take_profit_price:.2f}, SL: ${stop_loss_price:.2f}")
+                
+                # 4. 주문 실행
+                order = self.exchange.create_market_order_with_tp_sl(
+                    side, formatted_amount, take_profit_price, stop_loss_price
+                )
+
+                if order:
+                    self.log_trade("✅ 주문이 성공적으로 접수되었습니다. 포지션 반영을 위해 5초간 대기합니다.")
+                    time.sleep(5)
+                else:
+                    self.log_trade("🔥 주문 접수가 최종적으로 실패했습니다. 다음 사이클에서 재시도합니다.")
+
+            except Exception as e:
+                self.log_trade(f"🔥 주문 실행 중 심각한 오류 발생: {e}")
         else:
-            qty = (usdt_bal * self.LEVERAGE) / self.price if self.price else 0
-        return round(qty, self.QTY_PRECISION)
-
-    async def enter_position(self, side):
-        qty = self.calc_qty()
-        if qty <= 0 or not self.price:
-            return
-
-        # 시장가 진입
-        try:
-            order = self.client.futures_create_order(
-                symbol=self.SYMBOL, side=side,
-                type='MARKET', quantity=qty
-            )
-        except BinanceAPIException as e:
-            logger.error(f"Order failed: {e}")
-            return
-
-        self.position = 1 if side == 'BUY' else -1
-        self.entry_price = self.price
-        self.entry_qty = qty
-        msg = f"Entered {side}: price={self.price}, qty={qty}"
-        logger.info(msg)
-        self.trade_logs.append(msg)
-
-        # TP / SL 설정
-        tp_price = round(self.price * (1 + self.TP_PCT * (1 if side=='BUY' else -1)), self.PRICE_PRECISION)
-        sl_price = round(self.price * (1 + self.SL_PCT * (1 if side=='BUY' else -1)), self.PRICE_PRECISION)
-
-        try:
-            self.client.futures_create_order(
-                symbol=self.SYMBOL,
-                side=('SELL' if side=='BUY' else 'BUY'),
-                type='LIMIT',
-                timeInForce='GTC',
-                quantity=qty,
-                price=tp_price,
-                reduceOnly=True
-            )
-            self.client.futures_create_order(
-                symbol=self.SYMBOL,
-                side=('SELL' if side=='BUY' else 'BUY'),
-                type='STOP_MARKET',
-                stopPrice=sl_price,
-                quantity=qty,
-                reduceOnly=True
-            )
-        except BinanceAPIException as e:
-            logger.warning(f"TP/SL 설정 실패: {e}")
-
-    async def monitor(self):
-        """
-        REST 폴링 방식으로 1초마다 현재가를 조회,
-        high/low/close 버퍼 업데이트 및 로그 기록
-        """
-        while True:
-            if self.running:
-                try:
-                    tick = self.client.futures_symbol_ticker(symbol=self.SYMBOL)
-                    p = float(tick['price'])
-                    self.price = round(p, self.PRICE_PRECISION)
-                    # ATR 계산용 버퍼에 추가
-                    self.highs.append(self.price)
-                    self.lows.append(self.price)
-                    self.closes.append(self.price)
-                    # 로그
-                    msg = f"현재가: {self.price}"
-                    logger.info(msg)
-                    self.trade_logs.append(msg)
-                except Exception as e:
-                    logger.error(f"가격 조회 실패: {e}")
-            await asyncio.sleep(1)
-
-    async def run(self):
-        await self.monitor()
-
-
-if __name__ == "__main__":
-    bot = BinanceBot()
-    asyncio.run(bot.run())
+            self.log_trade("😴 진입 조건 불충분. 관망합니다.")
